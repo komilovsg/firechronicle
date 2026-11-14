@@ -2,9 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { median, percentile, mad, robustZ, rankPercentile } from './stats';
 import { tFromYM, tLabel, parseTLabel, yearOf, monthOf } from './time';
 import { naiveAt, CellIndex, type Meta, type Monthly } from './series';
-import { detectSeason, buildSummary, monthRanges, outlook, outlookText, anomalies } from './analytics';
+import { ytdStats, thisMonthStats, detectSeason, buildSummary, monthRanges, outlook, outlookText, anomalies } from './analytics';
 import { encodeHash, parseHash } from './hash';
-import { jumpPct, cvRows, headline, fmtNum, cpToX } from './validation';
+import { fsLayout, firstOverlap } from './fsLayout';
+import { jumpPct, cvRows, headline, fmtNum, cpToX, perYearBias, independentCheck } from './validation';
 import { csvCell, buildCsv } from './csv';
 import { pointInPolygon, circlePolygon } from './geo';
 
@@ -51,9 +52,13 @@ describe('naive splice', () => {
   it('switches at 144 and after S-NPP end', () => {
     expect(naiveAt(143, o)).toBe(1);
     expect(naiveAt(144, o)).toBe(7);
-    expect(naiveAt(322, o)).toBe(7);
+    expect(naiveAt(321, o)).toBe(7);
+    expect(naiveAt(322, o)).toBe(9);
     expect(naiveAt(323, o)).toBe(9);
-    expect(naiveAt(300, o, 299)).toBe(9);
+    expect(naiveAt(298, o, 299)).toBe(7);
+    expect(naiveAt(299, o, 299)).toBe(9);
+    expect(naiveAt(10, o, 322, 12)).toBe(1);
+    expect(naiveAt(12, o, 322, 12)).toBe(7);
   });
 });
 
@@ -106,16 +111,17 @@ describe('outlook', () => {
   const sp = { tFirst: 0, tLast: 12 * 10 + 10 };
   it('seasonal series -> critical Jun-Sep run, starting next month', () => {
     const o = outlook(mk((t) => (monthOf(t) >= 7 && monthOf(t) <= 9 ? 100 : 1), sp.tLast), sp);
-    expect(o.next).toEqual({ from: 7, to: 9, n: 11 });
-    expect(outlookText(o)).toBe('Next critical period: Jul–Sep (based on 11 years).');
+    expect(o.next).toEqual({ from: 7, to: 9, n: 10 });
+    expect(outlookText(o)).toBe('Next high-activity period: Jul–Sep (based on 10 years).');
     expect(o.months[0].m).toBe(12);
-    expect(o.months.find((x) => x.m === 8)!.p).toBeCloseTo(12 / 13, 6);
+    expect(o.months.find((x) => x.m === 8)!.p).toBeCloseTo(11 / 12, 6);
   });
   it('none above threshold', () => {
     const o = outlook(mk(() => 5, sp.tLast), sp);
     expect(o.next).toBeNull();
     expect(o.months.every((x) => x.k === 0 && !x.critical)).toBe(true);
     expect(outlookText(o)).toContain('No month');
+    expect(o.years).toBe(10);
   });
   it('n = 0 gives the prior 0.5', () => {
     const o = outlook(new Float64Array(1), { tFirst: 0, tLast: 0 });
@@ -278,5 +284,121 @@ describe('multipolygon AOI', () => {
   });
   it('wraps a plain Polygon', () => {
     expect(pointInPolys(1, 1, geometryPolys({ type: 'Polygon', coordinates: [sq(0, 0, 10)] }))).toBe(true);
+  });
+});
+
+describe('P0 updates', () => {
+  it('outlook uses only the last 10 complete years', () => {
+    const tLast = 12 * 20 + 10; // 2020-11 partial; window = 2010..2019
+    const a = new Float64Array(tLast + 1);
+    for (let t = 0; t <= tLast; t++) a[t] = yearOf(t) < 2010 ? 1000 : monthOf(t) === 3 ? 50 : 1; // old years are huge but ignored
+    const o = outlook(a, { tFirst: 0, tLast });
+    expect(o.threshold).toBeLessThan(60);
+    expect(o.months.find((x) => x.m === 3)!.n).toBe(10);
+    expect(o.months.find((x) => x.m === 3)!.critical).toBe(true);
+  });
+  it('AOI band from sdc and pv: calibration sums linearly, Poisson variance sums', () => {
+    const m = { c: [0, 1], t: [12, 12], modis: [1, 1], snpp: [0, 0], n20: [0, 0], n21: [0, 0], harm: [100, 50], sdc: [3, 4], pv: [16, 9] };
+    const s = new CellIndex(m as unknown as Monthly, 2, 21).aggregate([0, 1], meta);
+    const sd = Math.sqrt(7 * 7 + 25);
+    expect(s.lo[12]).toBeCloseTo(150 - 1.645 * sd, 6); expect(s.hi[12]).toBeCloseTo(150 + 1.645 * sd, 6);
+    const small = { ...m, harm: [1, 1], sdc: [5, 5], pv: [0, 0] };
+    expect(new CellIndex(small as unknown as Monthly, 2, 21).aggregate([0, 1], meta).lo[12]).toBe(0);
+  });
+  it('old lo/hi shape still sums', () => {
+    const m = { c: [0], t: [12], modis: [1], snpp: [0], n20: [0], n21: [0], harm: [5], lo: [4], hi: [6] };
+    const s = new CellIndex(m as unknown as Monthly, 1, 21).aggregate([0], meta);
+    expect(s.lo[12]).toBe(4); expect(s.hi[12]).toBe(6);
+  });
+  it('this month uses same-days history when partial.json is given; else approximate', () => {
+    const tLast = 12 * 11 + 10, arr = new Float64Array(tLast + 1);
+    for (let t = 0; t <= tLast; t++) arr[t] = 100;
+    arr[tLast] = 30;
+    const sp = { tFirst: 0, tLast };
+    const withHist = thisMonthStats(arr, 2000, 2026, sp, 10, { t: [10, 22, 34], v: [20, 30, 40] })!;
+    expect(withHist.approx).toBe(false); expect(withHist.median).toBe(30); expect(withHist.hist).toEqual([20, 30, 40]);
+    const approx = thisMonthStats(arr, 2000, 2026, sp, 10)!;
+    expect(approx.approx).toBe(true); expect(approx.median).toBeCloseTo(100 * (10 / 30), 6);
+  });
+  it('robust z floor keeps tiny-count months from exploding', () => {
+    const sp = { tFirst: 0, tLast: 12 * 6 };
+    const a = new Float64Array(sp.tLast + 1).fill(0); a[6 + 12 * 3] = 2; // one 2 among zeros in July
+    const z = anomalies(a, 2000, 2005, sp).find((c) => c.m === 7 && c.year === 2003)!.z;
+    expect(z).toBeCloseTo(2 / 1.4826, 6);
+  });
+  it('year-level bias and independent check helpers', () => {
+    const v = { cv: { snpp: { per_year_bias_pct: { '2014': 1.5, '2013': -0.5, x: 3, '2015': 'bad' }, country_month: { r2: 0.9851 }, climatology_r2: 0.62 } } };
+    expect(perYearBias(v, 'snpp')).toEqual([{ year: 2013, bias: -0.5 }, { year: 2014, bias: 1.5 }]);
+    expect(perYearBias({}, 'snpp')).toEqual([]);
+    expect(independentCheck(v)).toEqual({ r2: '0.985', baseline: '0.620' });
+    expect(independentCheck({})).toEqual({ r2: '—', baseline: '—' });
+  });
+});
+
+describe('fullscreen layout and ytd', () => {
+  it('layout by width', () => { expect([1920, 1024, 1023, 768, 641, 640, 375].map(fsLayout)).toEqual(['wide', 'wide', 'mid', 'mid', 'mid', 'mobile', 'mobile']); });
+  it('overlap detection', () => {
+    expect(firstOverlap([{ id: 'a', x: 0, y: 0, w: 100, h: 100 }, { id: 'b', x: 100, y: 0, w: 50, h: 50 }])).toBeNull();
+    expect(firstOverlap([{ id: 'a', x: 0, y: 0, w: 100, h: 100 }, { id: 'b', x: 90, y: 90, w: 50, h: 50 }])).toEqual(['a', 'b']);
+  });
+  it('year to date vs earlier years', () => {
+    const tLast = 12 * 3 + 5; // 2003-06 partial: Jan..May complete
+    const arr = new Float64Array(tLast + 1);
+    for (let t = 0; t <= tLast; t++) arr[t] = yearOf(t) === 2003 ? 20 : 10; // 5 months: 100 vs 50
+    const r = ytdStats(arr, { tFirst: 0, tLast }, 2000, 2026)!;
+    expect(r.value).toBe(100); expect(r.median).toBe(50); expect(r.pct).toBe(100); expect(r.months).toBe(5);
+    expect(ytdStats(arr, { tFirst: 0, tLast: 12 * 3 }, 2000, 2026)).toBeNull();
+    expect(ytdStats(arr, { tFirst: 24, tLast }, 2003, 2026)).toBeNull();
+  });
+});
+
+import { DEFAULT_REFRESH, formatCountdown, freshness, nextRun, parseRefresh, shortCountdown } from './freshness';
+describe('freshness', () => {
+  const R = parseRefresh({ schedule_utc: '03:00', cadence: 'daily', auto_update_until: '2027-05-15', issues_url: 'https://example.org/i' });
+  it('next 03:00 UTC, also across UTC midnight and exactly at the schedule', () => {
+    expect(nextRun(new Date('2026-11-15T01:00:00Z'), '03:00').toISOString()).toBe('2026-11-15T03:00:00.000Z');
+    expect(nextRun(new Date('2026-11-15T03:00:00Z'), '03:00').toISOString()).toBe('2026-11-16T03:00:00.000Z');
+    expect(nextRun(new Date('2026-11-15T23:59:59Z'), '03:00').toISOString()).toBe('2026-11-16T03:00:00.000Z');
+    expect(nextRun(new Date('2026-12-31T23:30:00Z'), '03:00').toISOString()).toBe('2027-01-01T03:00:00.000Z');
+  });
+  it('fresh / stale threshold / ended', () => {
+    const now = new Date('2026-11-15T12:00:00Z');
+    expect(freshness(now, '2026-11-14', R)).toEqual({ state: 'fresh', daysOld: 1 });
+    expect(freshness(now, '2026-11-12', R).state).toBe('fresh'); // 3 days
+    expect(freshness(now, '2026-11-11', R)).toEqual({ state: 'stale', daysOld: 4 });
+    expect(freshness(now, null, R).state).toBe('stale');
+    expect(freshness(new Date('2027-05-15T23:00:00Z'), '2027-05-14', R).state).toBe('fresh'); // last day still counts
+    expect(freshness(new Date('2027-05-16T00:00:01Z'), '2027-05-14', R).state).toBe('ended');
+    expect(freshness(new Date('2027-06-01T00:00:00Z'), '2027-05-31', R).state).toBe('ended'); // ended wins over fresh
+  });
+  it('missing or malformed refresh block falls back to defaults', () => {
+    expect(parseRefresh(undefined)).toEqual(DEFAULT_REFRESH);
+    expect(parseRefresh({ schedule_utc: '25:99', auto_update_until: 'soon', issues_url: 'http://x' })).toEqual(DEFAULT_REFRESH);
+    expect(parseRefresh({ schedule_utc: '04:30' }).schedule_utc).toBe('04:30');
+  });
+  it('countdown formatting', () => {
+    expect(formatCountdown(7 * 3600e3 + 12 * 60e3 + 45e3)).toBe('07:12:45'); expect(formatCountdown(-5)).toBe('00:00:00');
+    expect(shortCountdown(7.4 * 3600e3)).toBe('7h'); expect(shortCountdown(12.5 * 60e3)).toBe('12m'); expect(shortCountdown(10e3)).toBe('1m');
+  });
+});
+
+import { hasDrifted, type View } from './viewDrift';
+describe('view drift', () => {
+  const def: View = { center: [67, 45], zoom: 4, pitch: 45, bearing: 0 };
+  it('same view is not drifted; small changes stay under the thresholds', () => {
+    expect(hasDrifted(def, def, 800, 600)).toBe(false);
+    expect(hasDrifted({ ...def, zoom: 4.25 }, def, 800, 600)).toBe(false);
+    expect(hasDrifted({ ...def, pitch: 45.5, bearing: 0.5 }, def, 800, 600)).toBe(false);
+  });
+  it('zoom, pitch, bearing and pan beyond the thresholds', () => {
+    expect(hasDrifted({ ...def, zoom: 4.4 }, def, 800, 600)).toBe(true);
+    expect(hasDrifted({ ...def, zoom: 3.6 }, def, 800, 600)).toBe(true);
+    expect(hasDrifted({ ...def, pitch: 0 }, def, 800, 600)).toBe(true);
+    expect(hasDrifted({ ...def, bearing: 359 + 0.0 }, def, 800, 600)).toBe(false); // 1 degree
+    expect(hasDrifted({ ...def, bearing: -10 }, def, 800, 600)).toBe(true);
+    // at zoom 4 one degree of longitude is about 11.4 px: 10% of 800 px is 80 px, about 7 degrees
+    expect(hasDrifted({ ...def, center: [70, 45] }, def, 800, 600)).toBe(false);
+    expect(hasDrifted({ ...def, center: [75, 45] }, def, 800, 600)).toBe(true);
+    expect(hasDrifted({ ...def, center: [67, 52] }, def, 800, 600)).toBe(true);
   });
 });

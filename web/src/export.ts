@@ -52,3 +52,14 @@ export async function pointsCsv(cells: Set<string>, res: number, y0: number, y1:
   onProgress(total, total, out.length - 1);
   return { csv: out.join('\r\n') + '\r\n', rows: out.length - 1, missing };
 }
+
+import type { Meta, Region } from './lib/series';
+/** Every region's monthly series (raw per sensor, naive, harmonized, band) in one long CSV. */
+export function regionsCsv(regions: Region[], meta: Meta, toSeries: (r: Region, m: Meta) => Series): string {
+  const rows: (string | number)[][] = [];
+  for (const r of regions) {
+    const s = toSeries(r, meta), q = (x: number) => Math.round(x * 100) / 100;
+    for (let t = meta.t_first; t <= meta.t_last; t++) rows.push([r.id, tLabel(t), s.modis[t], s.snpp[t], s.n20[t], s.n21[t], s.naive[t], q(s.harm[t]), q(s.lo[t]), q(s.hi[t])]);
+  }
+  return buildCsv(['region', 't', 'modis', 'snpp', 'n20', 'n21', 'naive', 'harm', 'lo', 'hi'], rows);
+}

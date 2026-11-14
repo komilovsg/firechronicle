@@ -1,0 +1,17 @@
+cff-version: 1.2.0
+message: "If you use this software or its data, please cite it as below."
+title: "FireChronicle: harmonized MODIS-VIIRS active fire calendar for Central Asia, 2000-2026"
+type: software
+authors:
+  - name: "Deep Space AI team"
+date-released: "2026-11-15"
+url: "https://komilovsg.github.io/firechronicle/"
+repository-code: "https://github.com/komilovsg/firechronicle"
+abstract: "A static web app and dataset that put MODIS and VIIRS active-fire detections for Central Asia on one MODIS-equivalent scale, 2000 to 2026. Data: NASA FIRMS. Not an official NASA product."
+keywords:
+  - wildfire
+  - MODIS
+  - VIIRS
+  - active fire
+  - Central Asia
+  - NASA Space Apps Challenge

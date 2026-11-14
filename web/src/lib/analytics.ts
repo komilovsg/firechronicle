@@ -71,17 +71,25 @@ export function monthRanges(months: number[]): string[] {
 }
 const joinAnd = (a: string[]): string => (a.length <= 1 ? (a[0] ?? '') : `${a.slice(0, -1).join(', ')} and ${a[a.length - 1]}`);
 
-export interface ThisMonth { year: number; month: number; value: number; fraction: number; days: number; hist: number[]; histYears: number[]; median: number; p10: number; p90: number; pctVsMedian: number; rank: number }
+export interface ThisMonth { approx: boolean; year: number; month: number; value: number; fraction: number; days: number; hist: number[]; histYears: number[]; median: number; p10: number; p90: number; pctVsMedian: number; rank: number }
 /** Current (partial) month vs the same calendar month of earlier years, history pro-rated by fraction of the month elapsed. */
-export function thisMonthStats(arr: ArrayLike<number>, y0: number, y1: number, sp: Span, partialDays: number): ThisMonth | null {
+/** hist (optional): same-days-1..D totals of past years from partial.json (t, value); without it, history is pro-rated by days (approximate). */
+export function thisMonthStats(arr: ArrayLike<number>, y0: number, y1: number, sp: Span, partialDays: number, hist?: { t: number[]; v: number[] } | null): ThisMonth | null {
   const y = yearOf(sp.tLast), m = monthOf(sp.tLast), dim = daysInMonth(y, m);
   const value = arr[sp.tLast];
-  const fraction = Math.min(1, Math.max(0.01, partialDays / dim));
-  const h = monthHistory(arr, m, y0, Math.min(y1, y - 1), sp);
-  if (!Number.isFinite(value) || !h.values.length) return null;
-  const hist = h.values.map((v) => v * fraction);
-  const med = median(hist);
-  return { year: y, month: m, value, fraction, days: partialDays, hist, histYears: h.years, median: med, p10: percentile(hist, 10), p90: percentile(hist, 90), pctVsMedian: med > 0 ? (value / med - 1) * 100 : NaN, rank: rankPercentile(value, hist) };
+  let fraction = Math.min(1, Math.max(0.01, partialDays / dim)), approx = true;
+  let years: number[], vals: number[];
+  if (hist && hist.t.length) {
+    years = []; vals = [];
+    hist.t.forEach((t, i) => { const yy = yearOf(t); if (monthOf(t) === m && yy < y && yy >= y0 && yy <= y1 && Number.isFinite(hist.v[i])) { years.push(yy); vals.push(hist.v[i]); } });
+    approx = false; fraction = 1;
+  } else {
+    const h = monthHistory(arr, m, y0, Math.min(y1, y - 1), sp);
+    years = h.years; vals = h.values.map((v) => v * fraction);
+  }
+  if (!Number.isFinite(value) || !vals.length) return null;
+  const med = median(vals);
+  return { approx, year: y, month: m, value, fraction: approx ? fraction : 1, days: partialDays, hist: vals, histYears: years, median: med, p10: percentile(vals, 10), p90: percentile(vals, 90), pctVsMedian: med > 0 ? (value / med - 1) * 100 : NaN, rank: rankPercentile(value, vals) };
 }
 export const ordinal = (n: number): string => {
   const k = Math.round(n), r = k % 100;
@@ -90,17 +98,22 @@ export const ordinal = (n: number): string => {
 };
 const fmtN = (x: number): string => Math.round(x).toLocaleString('en-US');
 
-export interface Outlook { threshold: number; months: { m: number; year: number; k: number; n: number; p: number; critical: boolean }[]; next: { from: number; to: number; n: number } | null }
-/** Climatological probability that a month exceeds the pooled long-term monthly P75; p = (k+1)/(n+2). Not a forecast. */
-export function outlook(arr: ArrayLike<number>, sp: Span, pct = 75, critical = 0.5): Outlook {
-  const pooled: number[] = [];
-  for (let t = sp.tFirst; t < sp.tLast && t < arr.length; t++) if (Number.isFinite(arr[t])) pooled.push(arr[t]);
-  const threshold = percentile(pooled, pct);
+export interface Outlook { threshold: number; years: number; months: { m: number; year: number; k: number; n: number; p: number; critical: boolean }[]; next: { from: number; to: number; n: number } | null }
+/**
+ * Climatological probability that a calendar month is high-activity: above the area's 75th percentile of monthly values
+ * over the most recent `years` complete years. p = (k+1)/(n+2), Laplace-smoothed. Not a forecast.
+ */
+export function outlook(arr: ArrayLike<number>, sp: Span, pct = 75, critical = 0.5, years = 10): Outlook {
+  const lastYear = yearOf(sp.tLast) - 1; // latest complete year (the current month is partial)
+  const t0 = Math.max(sp.tFirst, tFromYM(lastYear - years + 1, 1)), t1 = Math.min(tFromYM(lastYear, 12), sp.tLast - 1);
+  const win: number[] = [];
+  for (let t = t0; t <= t1 && t < arr.length; t++) if (Number.isFinite(arr[t])) win.push(arr[t]);
+  const threshold = percentile(win, pct);
   const months: Outlook['months'] = [];
   for (let i = 1; i <= 12; i++) {
     const t = sp.tLast + i, m = monthOf(t), year = yearOf(t);
     let k = 0, n = 0;
-    for (let tt = sp.tFirst; tt < sp.tLast && tt < arr.length; tt++) {
+    for (let tt = t0; tt <= t1 && tt < arr.length; tt++) {
       if (monthOf(tt) !== m || !Number.isFinite(arr[tt])) continue;
       n++; if (arr[tt] > threshold) k++;
     }
@@ -114,12 +127,12 @@ export function outlook(arr: ArrayLike<number>, sp: Span, pct = 75, critical = 0
     while (last + 1 < months.length && months[last + 1].critical) last++;
     next = { from: months[first].m, to: months[last].m, n: Math.max(...months.map((x) => x.n)) };
   }
-  return { threshold, months, next };
+  return { threshold, years, months, next };
 }
 export function outlookText(o: Outlook): string {
-  if (!o.next) return 'No month in the next 12 is above 50% likelihood of a high-activity month (climatology, not a forecast).';
+  if (!o.next) return 'No month in the next 12 is likely to be high-activity (climatology, not a forecast).';
   const a = MONTH_ABBR[o.next.from - 1], b = MONTH_ABBR[o.next.to - 1];
-  return `Next critical period: ${a === b ? a : `${a}–${b}`} (based on ${o.next.n} years).`;
+  return `Next high-activity period: ${a === b ? a : `${a}\u2013${b}`} (based on ${o.next.n} years).`;
 }
 
 export interface AnomalyCell { m: number; year: number; z: number }
@@ -127,13 +140,13 @@ export function anomalies(arr: ArrayLike<number>, y0: number, y1: number, sp: Sp
   const out: AnomalyCell[] = [];
   for (let m = 1; m <= 12; m++) {
     const h = monthHistory(arr, m, y0, y1, sp);
-    const med = median(h.values), md = mad(h.values);
+    const med = median(h.values), md = Math.max(mad(h.values), Math.sqrt(Math.max(0, med)), 1); // floor: counts are Poisson-like
     h.years.forEach((year, i) => out.push({ m, year, z: robustZ(h.values[i], med, md, 3) }));
   }
   return out;
 }
 
-export interface SummaryInput { arr: ArrayLike<number>; y0: number; y1: number; sp: Span; partialDays: number }
+export interface SummaryInput { arr: ArrayLike<number>; y0: number; y1: number; sp: Span; partialDays: number; partialHist?: { t: number[]; v: number[] } | null }
 export function buildSummary(inp: SummaryInput): string[] {
   const { arr, y0, y1, sp } = inp, out: string[] = [];
   const cl = climatology(arr, y0, y1, sp);
@@ -155,10 +168,29 @@ export function buildSummary(inp: SummaryInput): string[] {
       out.push(`${last.year} was ${rel} the ${at[0].year}–${last.year} median.`);
     }
   }
-  const tm = thisMonthStats(arr, y0, y1, sp, inp.partialDays);
+  const tm = thisMonthStats(arr, y0, y1, sp, inp.partialDays, inp.partialHist);
   if (tm) {
-    const share = tm.fraction < 1 ? ` so far (${tm.days} days)` : '';
+    const share = tm.days < daysInMonth(tm.year, tm.month) ? ` so far (${tm.days} days)` : '';
     out.push(`${MONTH_FULL[tm.month - 1]} ${tm.year}${share}: ${fmtN(tm.value)} detections${Number.isFinite(tm.rank) ? `, ${ordinal(tm.rank)} percentile` : ''}.`);
   }
   return out;
+}
+
+export interface Ytd { value: number; median: number; pct: number; months: number }
+/** Year-to-date total over the complete months of the current year vs the same months of earlier years (within y0..y1). */
+export function ytdStats(arr: ArrayLike<number>, sp: Span, y0: number, y1: number): Ytd | null {
+  const Y = yearOf(sp.tLast), m = monthOf(sp.tLast) - 1; // current month is partial
+  if (m < 1) return null;
+  const sum = (y: number): number | null => {
+    let s = 0;
+    for (let k = 1; k <= m; k++) { const t = tFromYM(y, k); if (t < sp.tFirst || t >= arr.length || !Number.isFinite(arr[t])) return null; s += arr[t]; }
+    return s;
+  };
+  const value = sum(Y);
+  if (value === null) return null;
+  const past: number[] = [];
+  for (let y = y0; y <= Math.min(y1, Y - 1); y++) { const v = sum(y); if (v !== null) past.push(v); }
+  if (!past.length) return null;
+  const med = median(past);
+  return { value, median: med, pct: med > 0 ? (value / med - 1) * 100 : NaN, months: m };
 }

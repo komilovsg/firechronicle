@@ -56,3 +56,17 @@ export function cpToX(cp: string | null): number | null {
   const m = cp ? /^(\d{4})-(\d{2})$/.exec(cp) : null;
   return m ? +m[1] + (+m[2] - 1) / 12 + 1 / 24 : null;
 }
+
+/** cv.<sensor>.per_year_bias_pct = {"2013": x, ...} -> sorted [{year, bias}] (invalid entries dropped). */
+export function perYearBias(v: unknown, sensor: string): { year: number; bias: number }[] {
+  const m = pick(v, 'cv', sensor, 'per_year_bias_pct');
+  if (m === null || typeof m !== 'object') return [];
+  return Object.entries(m as Record<string, unknown>)
+    .map(([y, b]) => ({ year: Number(y), bias: num(b) }))
+    .filter((r): r is { year: number; bias: number } => Number.isInteger(r.year) && r.bias !== null)
+    .sort((a, b) => a.year - b.year);
+}
+/** Independent check: country-month R\u00b2 of the VIIRS S-NPP prediction vs a seasonal-climatology baseline. */
+export function independentCheck(v: unknown): { r2: string; baseline: string } {
+  return { r2: fmtNum(pick(v, 'cv', 'snpp', 'country_month', 'r2'), 3), baseline: fmtNum(pick(v, 'cv', 'snpp', 'climatology_r2'), 3) };
+}

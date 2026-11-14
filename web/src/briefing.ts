@@ -33,10 +33,10 @@ export function drawBriefing(cv: HTMLCanvasElement, b: Brief): void {
   f(500, 16, "'IBM Plex Mono', monospace"); g.fillStyle = ink3; g.fillText('THIS MONTH', tx, 190);
   f(800, 76); g.fillStyle = ember; g.fillText(b.headline, tx, 270);
   f(400, 24, "'IBM Plex Sans', sans-serif"); g.fillStyle = ink; wrap(g, b.sub, tx, 312, 520, 32);
-  f(500, 16, "'IBM Plex Mono', monospace"); g.fillStyle = ink3; g.fillText('CRITICAL PERIOD AHEAD', tx, 430);
+  f(500, 16, "'IBM Plex Mono', monospace"); g.fillStyle = ink3; g.fillText('HIGH-ACTIVITY PERIOD AHEAD', tx, 430);
   f(700, 30); g.fillStyle = ink; g.fillText(b.critical, tx, 470);
   f(400, 14, "'IBM Plex Sans', sans-serif"); g.fillStyle = ink3; g.fillText(`Calendar: ${b.unit}, ${b.y0}–${Math.floor(b.tLast / 12) + 2000}. Climatology, not a forecast.`, 48, 560);
-  g.fillText(`NASA FIRMS · MODIS + VIIRS harmonized · generated ${new Date().toISOString().slice(0, 10)} · Not an official NASA product`, 48, 592);
+  g.fillText(`FireChronicle · Deep Space AI · NASA FIRMS · MODIS + VIIRS harmonized · generated ${new Date().toISOString().slice(0, 10)} · Not an official NASA product`, 48, 592);
 }
 function wrap(g: CanvasRenderingContext2D, text: string, x: number, y: number, w: number, lh: number): void {
   let line = '', yy = y;

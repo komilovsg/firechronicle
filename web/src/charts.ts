@@ -5,6 +5,7 @@ import { CanvasRenderer } from 'echarts/renderers';
 import { SEQ, type Theme } from './theme';
 import { MONTH_ABBR, tFromYM, tLabel, yearOf } from './lib/time';
 import { percentile } from './lib/stats';
+import { fmtInt } from './lib/format';
 import type { Series } from './lib/series';
 import type { AnomalyCell, Climatology, ThisMonth } from './lib/analytics';
 
@@ -18,7 +19,7 @@ export function makeChart(el: HTMLElement): Chart {
   new ResizeObserver(() => c.resize()).observe(el);
   return c;
 }
-const fmt = (x: number): string => (Number.isFinite(x) ? Math.round(x).toLocaleString('en-US') : '–');
+const fmt = fmtInt;
 const mono = "'IBM Plex Mono', ui-monospace, Menlo, monospace";
 const base = (th: Theme): Opt => ({
   animation: !window.matchMedia('(prefers-reduced-motion: reduce)').matches, animationDuration: 300,
@@ -76,7 +77,7 @@ export function monthOption(tm: ThisMonth, th: Theme): Opt {
     tooltip: { ...base(th).tooltip, trigger: 'axis', axisPointer: { type: 'shadow' } },
     grid: { left: 50, right: 12, top: 14, bottom: 28 },
     xAxis: { type: 'category', data: years.map(String), ...axisCommon(th), axisLabel: { color: th.ink3, fontSize: 10, fontFamily: mono, interval: years.length > 14 ? 1 : 0 } },
-    yAxis: { type: 'value', name: tm.fraction < 1 ? `history pro-rated to ${tm.days} days` : 'detections', nameTextStyle: { color: th.ink3, fontSize: 10, align: 'left' }, ...axisCommon(th), axisLabel: { color: th.ink3, fontSize: 11, fontFamily: mono, formatter: (v: number) => fmt(v) } },
+    yAxis: { type: 'value', name: tm.days < 28 ? (tm.approx ? `earlier years pro-rated to ${tm.days} days (approximate)` : `days 1\u2013${tm.days} of each year`) : 'detections', nameTextStyle: { color: th.ink3, fontSize: 10, align: 'left' }, ...axisCommon(th), axisLabel: { color: th.ink3, fontSize: 11, fontFamily: mono, formatter: (v: number) => fmt(v) } },
     series: [{ type: 'bar', data, barMaxWidth: 16, markArea: { silent: true, itemStyle: { color: th.ink3, opacity: 0.16 }, data: [[{ yAxis: tm.p10 }, { yAxis: tm.p90 }]] }, markLine: { silent: true, symbol: 'none', lineStyle: { color: th.ink, width: 1.5, type: 'dashed' }, label: { color: th.ink2, fontSize: 10, formatter: 'median', position: 'insideStartTop' }, data: [{ yAxis: tm.median }] } }],
   };
 }
@@ -116,7 +117,7 @@ export function anomalyOption(cells: AnomalyCell[], years: number[], th: Theme):
   };
 }
 
-export function beforeAfterOption(s: Series, y0: number, y1: number, tFirst: number, tLast: number, snppEndT: number, th: Theme, cps: { harm: number | null; naive: number | null; harmLabel?: string; naiveLabel?: string } = { harm: null, naive: null }): Opt {
+export function beforeAfterOption(s: Series, y0: number, y1: number, tFirst: number, tLast: number, snppEndT: number, th: Theme, cps: { harm: number | null; naive: number | null; harmLabel?: string; naiveLabel?: string; snppX?: number; snppLabel?: string; endLabel?: string } = { harm: null, naive: null }): Opt {
   const naive: number[][] = [], harm: number[][] = [], lo: number[][] = [], band: number[][] = [];
   for (let y = y0; y <= y1; y++) {
     const a = tFromYM(y, 1), b = tFromYM(y, 12);
@@ -127,8 +128,8 @@ export function beforeAfterOption(s: Series, y0: number, y1: number, tFirst: num
     naive.push([x, n]); harm.push([x, h]); lo.push([x, l]); band.push([x, u - l]);
   }
   const ml = (x: number, name: string, color: string, solid = false): Opt => ({ xAxis: x, label: { formatter: name, color: th.ink2, fontSize: 10, position: 'insideEndTop', rotate: 90, align: 'right', distance: 4 }, lineStyle: { color, type: solid ? 'solid' : 'dotted', width: solid ? 1.5 : 1 } });
-  const marks: Opt[] = [ml(2012, cps.naive ? `S-NPP starts 2012-01 \u00b7 naive break ${cps.naiveLabel ?? ''}` : 'VIIRS S-NPP starts', th.ember), ml(yearOf(snppEndT) + (snppEndT % 12) / 12 + 0.07, 'S-NPP ends 2026-11', th.ink3)];
-  if (cps.harm !== null) marks.push(ml(cps.harm, `Harmonized break ${cps.harmLabel ?? ''} = MODIS alone`, th.ink, true));
+  const marks: Opt[] = [ml(cps.snppX ?? 2012, `S-NPP starts ${cps.snppLabel ?? ''}${cps.naive ? ` \u00b7 naive break ${cps.naiveLabel ?? ''}` : ''}`, th.ember), ml(yearOf(snppEndT) + (snppEndT % 12) / 12 + 0.07, `S-NPP ends ${cps.endLabel ?? ''}`, th.ink3)];
+  if (cps.harm !== null) marks.push(ml(cps.harm, `Harmonized break ${cps.harmLabel ?? ''}`, th.ink, true));
   return {
     ...base(th), aria: { enabled: false },
     legend: { data: ['Naive splice', 'Harmonized', 'Approx. 90% band'], top: 0, textStyle: { color: th.ink2, fontSize: 11 }, itemHeight: 8 },
@@ -146,3 +147,28 @@ export function beforeAfterOption(s: Series, y0: number, y1: number, tFirst: num
 }
 
 export function pctl(a: number[], p: number): number { return percentile(a, p); }
+
+/** Annual harmonized totals of two areas overlaid (naive splice dashed). */
+export function compareAnnualOption(a: Series, b: Series, nameA: string, nameB: string, y0: number, y1: number, tFirst: number, tLast: number, th: Theme): Opt {
+  const col = [th.ink, th.viirs];
+  const mk = (sr: Series, key: 'harm' | 'naive') => {
+    const out: number[][] = [];
+    for (let y = y0; y <= y1; y++) {
+      const t0 = tFromYM(y, 1), t1 = tFromYM(y, 12);
+      if (t0 < tFirst || t1 >= tLast) continue;
+      let v = 0; for (let t = t0; t <= t1; t++) v += sr[key][t];
+      out.push([y + 0.5, v]);
+    }
+    return out;
+  };
+  const line = (name: string, data: number[][], color: string, dashed: boolean): Opt => ({ name, type: 'line', data, symbol: 'circle', symbolSize: 4, lineStyle: { width: dashed ? 1.5 : 2.5, color, type: dashed ? 'dashed' : 'solid' }, itemStyle: { color } });
+  return {
+    ...base(th), aria: { enabled: false },
+    legend: { data: [nameA, nameB, `${nameA} (naive)`, `${nameB} (naive)`], top: 0, textStyle: { color: th.ink2, fontSize: 11 }, itemHeight: 8 },
+    tooltip: { ...base(th).tooltip, trigger: 'axis', formatter: (ps: Opt[]) => `<b>${Math.floor(ps[0].value[0])}</b><br>` + ps.map((p: Opt) => `${p.seriesName}: ${fmt(p.value[1])}`).join('<br>') },
+    grid: { left: 54, right: 14, top: 44, bottom: 26 },
+    xAxis: { type: 'value', min: Math.min(y0, 2000), max: yearOf(tLast) + 1, interval: 2, ...axisCommon(th), axisLabel: { color: th.ink3, fontSize: 10, fontFamily: mono, formatter: (v: number) => String(v) }, splitLine: { show: false } },
+    yAxis: { type: 'value', ...axisCommon(th), axisLabel: { color: th.ink3, fontSize: 11, fontFamily: mono, formatter: (v: number) => fmt(v) } },
+    series: [line(nameA, mk(a, 'harm'), col[0], false), line(nameB, mk(b, 'harm'), col[1], false), line(`${nameA} (naive)`, mk(a, 'naive'), col[0], true), line(`${nameB} (naive)`, mk(b, 'naive'), col[1], true)],
+  };
+}

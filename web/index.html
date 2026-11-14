@@ -4,6 +4,11 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' https://tiles.openfreemap.org; img-src 'self' data: blob: https://tiles.openfreemap.org; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com 'self'; worker-src blob: 'self'; script-src 'self'; object-src 'none'; base-uri 'self'">
+<meta name="author" content="Deep Space AI">
+<meta property="og:title" content="FireChronicle — one fire history, before and after MODIS">
+<meta property="og:description" content="Harmonized MODIS and VIIRS fire hotspot history for Central Asia, 2000 to today. By Deep Space AI. Not an official NASA product.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://komilovsg.github.io/firechronicle/">
 <meta name="color-scheme" content="dark light">
 <meta name="description" content="Harmonized MODIS and VIIRS fire hotspot history for Central Asia, 2000 to today. Not an official NASA product.">
 <title>FireChronicle — one fire history, before and after MODIS</title>
@@ -26,11 +31,24 @@
         <div>
           <h1 class="name">FireChronicle</h1>
           <p class="tag">One fire history, before and after MODIS</p>
+          <p class="credit">by Deep Space AI &middot; Dushanbe, Tajikistan &middot; NASA Space Apps 2026</p>
         </div>
         <div class="badges">
           <span id="badge-sample" class="badge warn" hidden>Sample data</span>
-          <span id="badge-fresh" class="badge" hidden></span>
+          <button type="button" id="fresh" class="fresh" aria-haspopup="dialog" aria-expanded="false" hidden>
+            <span class="dot" aria-hidden="true"></span>
+            <span class="fr-main" id="fr-main">Updated daily from NASA FIRMS</span>
+            <span class="fr-detail" id="fr-upd"></span>
+            <span class="fr-detail" id="fr-through"></span>
+            <span class="fr-detail fr-cd" id="fr-cd"><span id="fr-cd-label">Next update in</span> <span class="digits" id="fr-digits"></span></span>
+            <span class="fr-short" id="fr-short"></span>
+          </button>
           <span id="badge-nrt" class="badge" hidden>Latest month provisional (NRT)</span>
+        </div>
+        <div class="hdr-actions">
+          <a id="gh-btn" class="iconbtn" href="https://github.com/komilovsg/firechronicle" target="_blank" rel="noopener noreferrer" aria-label="Source code on GitHub" title="Source code on GitHub"><svg viewBox="0 0 16 16" width="18" height="18" aria-hidden="true" focusable="false" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.6 7.6 0 0 1 4 0c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg></a>
+          <button type="button" id="tour-btn" class="iconbtn" aria-label="Open guided tour" title="Guided tour (?)">?</button>
+          <button type="button" id="theme-btn" class="iconbtn" aria-label="Theme: system" title="Theme: system">&#9680;</button>
         </div>
       </div>
       <p class="context">MODIS is retiring. Suomi NPP went dark on 2 Nov 2026. FireChronicle keeps 26 years of satellite fire records on one scale.</p>
@@ -38,6 +56,7 @@
     <ul class="insights" id="insights" aria-label="Key figures for Central Asia"></ul>
   </div>
 </header>
+<div id="fresh-banner" class="banner" role="status" hidden></div>
 <div id="status" class="status" role="status" aria-live="polite"></div>
 <div class="app">
   <section class="mapcol" aria-label="Map and area of interest">
@@ -49,6 +68,7 @@
         <button type="button" id="copy-link" class="btn ghost">Copy link</button>
       </div>
       <div class="groups">
+      <label class="fld"><span>Compare with</span><select id="cmp-region"></select></label>
       <div class="group">
         <span class="gl">Draw an area</span>
         <div class="row tight">
@@ -73,7 +93,13 @@
     <div class="mapwrap">
       <div id="map" aria-label="Map of fire hotspot density by H3 cell"></div>
       <div class="maplegend" id="maplegend" aria-hidden="true"></div>
+      <div class="maphint" id="maphint">Tip: choose a country or draw an area to start</div>
+      <div class="maplayers seg" id="maplayers" role="group" aria-label="Map layer">
+        <button type="button" data-layer="activity" aria-pressed="true">Activity</button>
+        <button type="button" data-layer="anomaly" aria-pressed="false">Anomaly now</button>
+      </div>
       <div class="mapnote" id="mapnote"></div>
+      <button type="button" id="fs-btn" class="btn mapbtn" aria-label="Expand map" title="Expand map (F)">⤢</button>
       <button type="button" id="dim-toggle" class="btn mapbtn" aria-pressed="true" aria-label="Toggle 3D view">3D</button>
     </div>
     <div class="replay" id="replay" aria-label="Time-lapse replay"></div>
@@ -85,10 +111,16 @@
       <p class="aoi-name" id="aoi-name"></p>
       <div id="summary" class="lede"></div>
       <div class="outlook" id="outlook-wrap">
-        <h3 class="mini">Critical periods ahead <span class="muted">climatology, not a forecast</span></h3>
+        <h3 class="mini">High-activity months ahead <span class="muted">climatology, not a forecast</span></h3>
         <div class="strip" id="outlook" role="list"></div>
         <p class="note" id="outlook-note"></p>
       </div>
+    </section>
+
+    <section class="block" id="unusual" aria-labelledby="h-unusual">
+      <h2 id="h-unusual">Where is it unusual now?</h2>
+      <p class="lede2" id="unusual-note">Loading cell data…</p>
+      <ol class="toplist" id="toplist"></ol>
     </section>
 
     <section class="block cal-hero" aria-labelledby="h-cal">
@@ -100,6 +132,10 @@
         <div class="chart" id="cal-b" role="img" hidden></div>
         <span class="chip l" id="chip-l" hidden>Naive splice</span><span class="chip r" id="chip-r" hidden>Harmonized</span>
         <div class="handle" id="cal-handle" role="slider" tabindex="0" aria-label="Swipe between naive splice and harmonized" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50" hidden></div>
+      </div>
+      <div class="cmp-wrap" id="cmp-wrap" hidden>
+        <figure class="cmp"><figcaption id="cmp-title-a"></figcaption><div class="chart" id="cmp-a" role="img"></div></figure>
+        <figure class="cmp"><figcaption id="cmp-title-b"></figcaption><div class="chart" id="cmp-b" role="img"></div></figure>
       </div>
       <ul class="legend" id="cal-legend"></ul>
       <p class="note" id="cal-note"></p>
@@ -125,7 +161,7 @@
     </section>
 
     <section class="block" aria-labelledby="h-ba" id="before-after">
-      <div class="head"><h2 id="h-ba">Naive stitching reverses the trend.</h2><button type="button" class="btn small png" data-png="ba">PNG</button></div>
+      <div class="head"><h2 id="h-ba">Naive stitching flips the sign of the change</h2><button type="button" class="btn small png" data-png="ba">PNG</button></div>
       <p class="lede2">Change in mean annual total, 2012&ndash;2025 vs 2001&ndash;2011, Central Asia.</p>
       <ul class="trio" id="trio"></ul>
       <p class="note why-line" id="ba-why"></p>
@@ -142,8 +178,11 @@
         <button type="button" class="btn primary" id="dl-points">Download hotspots CSV</button>
         <button type="button" class="btn" id="dl-series">Download monthly series CSV</button>
         <button type="button" class="btn" id="dl-brief">Briefing card (PNG)</button>
+        <button type="button" class="btn" id="dl-dataset">Download harmonized dataset</button>
+        <button type="button" class="btn" id="cite-btn">Cite</button>
       </div>
       <p class="note" id="exp-msg" role="status" aria-live="polite">Hotspots CSV covers the selected area and years. Charts have their own PNG buttons.</p>
+      <p class="note" id="raw-links"></p>
       <progress id="exp-progress" max="1" value="0" hidden></progress>
     </section>
 
@@ -152,7 +191,12 @@
       <div id="method-body"></div>
       <div id="why" class="why"></div>
     </details>
-    <footer class="foot"><p>Data: NASA FIRMS. Not an official NASA product.</p><p class="small">Basemap &copy; OpenStreetMap contributors, OpenFreeMap.</p></footer>
+    <footer class="foot">
+      <p>FireChronicle &mdash; built by <strong>Deep Space AI</strong> (Dushanbe, Tajikistan) for the NASA Space Apps Challenge 2026, challenge &lsquo;Harmonization of MODIS and VIIRS Hot Spots&rsquo;.</p>
+      <p class="links"><a href="https://github.com/komilovsg/firechronicle" target="_blank" rel="noopener noreferrer">GitHub repo</a> &middot; <a href="https://github.com/komilovsg/firechronicle/issues" target="_blank" rel="noopener noreferrer">Issues</a> &middot; <button type="button" class="linkbtn" id="cite-foot">Cite</button></p>
+      <p>Data: NASA FIRMS. Not an official NASA product.</p>
+      <p class="small">Basemap &copy; OpenStreetMap contributors, OpenFreeMap.</p>
+    </footer>
   </main>
 </div>
 <script type="module" src="/src/main.ts"></script>
