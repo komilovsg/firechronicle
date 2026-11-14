@@ -475,3 +475,53 @@ describe('assistant contracts', () => {
     expect(nr.ok && nr.value).toEqual({ action: null, refused: true });
   });
 });
+
+import { eligibleUnusual, rankUnusual, unusualText, unusualBadge, noUnusualText, firstYearOfMonth } from './anomalyNow';
+describe('unusual list', () => {
+  const T = 126; // July of year 10; tFirst = 0
+  // spec: [target value, history values for the 10 earlier Julys]
+  const build = (spec: [number, number[]][]) => {
+    const rows: { c: number; t: number; v: number }[] = [];
+    spec.forEach(([val, hist], c) => { hist.forEach((v, y) => { if (v > 0) rows.push({ c, t: 12 * y + 6, v }); }); rows.push({ c, t: T, v: val }); });
+    const m = { c: rows.map((r) => r.c), t: rows.map((r) => r.t), modis: rows.map(() => 0), snpp: rows.map(() => 0), n20: rows.map(() => 0), n21: rows.map(() => 0), harm: rows.map((r) => r.v), lo: rows.map(() => 0), hi: rows.map(() => 0) };
+    const idx = new CellIndex(m as unknown as Monthly, spec.length, 200);
+    return { a: anomalyNow(idx, spec.map((_, i) => i), T, 0), cells: spec.map((_, i) => i) };
+  };
+  const hist = (base: number) => Array.from({ length: 10 }, (_, y) => base + y); // base..base+9
+  it('tiny counts cannot qualify', () => {
+    const { a, cells } = build([[9, hist(1)], [50, hist(10)], [15, hist(12)]]);
+    const el = eligibleUnusual(a, cells);
+    expect(el.map((r) => r.cell)).toEqual([1]); // cell 0 below 10; cell 2 (15) below its own P75 (about 19)
+  });
+  it('ties on percentile are broken by robust z, then value', () => {
+    const { a, cells } = build([[100, hist(10)], [100, hist(50)], [100, hist(10)]]);
+    const el = eligibleUnusual(a, cells);
+    expect(el.map((r) => r.pct)).toEqual([100, 100, 100]);
+    expect(el[0].z).toBeGreaterThanOrEqual(el[1].z); expect(el[1].z).toBeGreaterThanOrEqual(el[2].z);
+    expect(el[2].cell).toBe(1); // history close to the value gives the smallest excess
+  });
+  it('record wording never says 100th; non-record uses the percentile', () => {
+    const { a, cells } = build([[100, hist(10)], [17, hist(10)]]);
+    const r = eligibleUnusual(a, cells).find((x) => x.cell === 0)!;
+    expect(r.record).toBe(true);
+    expect(unusualText(r, T, 0)).toBe('Highest July since 2000 (100 vs median 15)'); expect(unusualBadge(r)).toBe('Record');
+    const n = eligibleUnusual(a, cells).find((x) => x.cell === 1)!;
+    expect(n.record).toBe(false); expect(unusualText(n, T, 0)).toMatch(/^\d+(st|nd|rd|th) percentile · 17 vs median 15$/); expect(unusualText(n, T, 0)).not.toContain('100th');
+    expect(firstYearOfMonth(10, 7)).toBe(2001); expect(firstYearOfMonth(10, 12)).toBe(2000); expect(firstYearOfMonth(0, 7)).toBe(2000);
+  });
+  it('at most 2 cells per country, remaining slots filled with the next best', () => {
+    const spec: [number, number[]][] = [200, 190, 180, 170, 160, 150].map((v) => [v, hist(10)] as [number, number[]]);
+    const { a, cells } = build(spec);
+    const groupOf = (c: number) => (c < 4 ? 'A' : 'B');
+    const r = rankUnusual(a, cells, { k: 5, groupOf });
+    expect(r.list.map((x) => x.cell)).toEqual([0, 1, 4, 5, 2]); // A, A, B, B, then the best leftover A
+    const capped = rankUnusual(a, cells, { k: 4, groupOf });
+    expect(capped.list.map((x) => groupOf(x.cell))).toEqual(['A', 'A', 'B', 'B']);
+  });
+  it('fewer than 3 qualifying cells gives an empty list and the empty-state text', () => {
+    const { a, cells } = build([[100, hist(10)], [120, hist(10)], [5, hist(1)]]);
+    const r = rankUnusual(a, cells);
+    expect(r.list).toEqual([]); expect(r.eligible).toBe(2);
+    expect(noUnusualText(T)).toBe('No unusual activity in July — most areas are near or below their usual level.');
+  });
+});

@@ -23,7 +23,7 @@ import type { FsApi, HudData } from './fullscreen';
 import { parseRefresh } from './lib/freshness';
 import { encodeCmp, parseCmp } from './lib/cmp';
 import { ytdStats } from './lib/analytics';
-import { anomalyNow, anomalyBin, topUnusual, type CellAnomaly } from './lib/anomalyNow';
+import { anomalyNow, anomalyBin, rankUnusual, unusualText, unusualBadge, noUnusualText, type CellAnomaly } from './lib/anomalyNow';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string): T => document.getElementById(id) as T;
 const el = (tag: string, cls?: string, text?: string): HTMLElement => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; };
@@ -33,6 +33,7 @@ const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').match
 interface State { aoi: AoiSpec; y0: number; y1: number; mode: CalMode; frameT: number | null; seasonYear: number | null }
 let meta: Meta, regions: Region[], countries: Countries, cellIds: string[] = [];
 let lat: Float64Array, lon: Float64Array;
+let cellCountry: string[] | null = null;
 let index: CellIndex | null = null;
 let monthlyPromise: Promise<void> | null = null;
 let aoiCells: number[] = [], aoiName = '', aoiRing: Pt[] | null = null, aoiPolys: Poly[] | null = null;
@@ -361,22 +362,30 @@ async function mapAfterIndex(token: number): Promise<void> {
 function anomalyTarget(): number {
   return pdays() < daysInMonth(yearOf(meta.t_last), monthOf(meta.t_last)) ? meta.t_last - 1 : meta.t_last;
 }
+/** Country label for a cell: the pipeline's per-cell ISO3 when present, else a polygon test of its centre. */
+function cellCountryName(c: number): string {
+  const iso = cellCountry?.[c];
+  if (iso) return countries.features.find((f) => f.properties.id === iso)?.properties.name ?? iso;
+  return countryOf(lon[c], lat[c]);
+}
 function countryOf(lo: number, la: number): string {
   for (const f of countries.features) if (pointInPolys(lo, la, geometryPolys(f.geometry as { type: string; coordinates: unknown }))) return f.properties.name;
   return 'Outside the six countries';
 }
 const hemi = (v: number, p: string, n: string): string => `${Math.abs(v).toFixed(1)}\u00b0${v >= 0 ? p : n}`;
+function unusualRanked() { return anom ? rankUnusual(anom, aoiCells, { k: 5, groupOf: (c) => cellCountryName(c) }) : null; }
 function renderUnusual(): void {
   const note = $('unusual-note'), ol = $('toplist'); ol.textContent = '';
   if (!anom) { note.textContent = 'Loading cell data\u2026'; return; }
-  const top = topUnusual(anom, aoiCells, 5), m = monthOf(anomT), y = yearOf(anomT);
-  note.textContent = top.length ? `Latest complete month, ${MONTH_FULL[m - 1]} ${y}, ranked against the same month of earlier years, cell by cell. Cells with fewer than 5 years of detections are left out. Click one to see it on the map.` : `No cell in this area has enough history to rank ${MONTH_FULL[m - 1]} ${y}.`;
-  top.forEach((u, i) => {
+  const { list } = unusualRanked()!;
+  if (!list.length) { note.textContent = noUnusualText(anomT); hudPing(); return; }
+  note.textContent = `Latest complete month, ${MONTH_FULL[monthOf(anomT) - 1]} ${yearOf(anomT)}, compared with the same month of earlier years, cell by cell. Cells need 5+ years of history and a clearly busy month. Click one to see it on the map.`;
+  list.forEach((u, i) => {
     const li = el('li'), b = el('button') as HTMLButtonElement; b.type = 'button';
-    const la = lat[u.cell], lo = lon[u.cell];
-    const mid = el('span'); mid.append(countryOf(lo, la)); mid.append(el('small', undefined, `${hemi(la, 'N', 'S')} ${hemi(lo, 'E', 'W')} \u00b7 ${fmt(u.value)} detections`));
-    b.append(el('span', 'rk', String(i + 1)), mid, el('span', 'pc', `${ordinal(u.pct)} pct`));
-    b.setAttribute('aria-label', `Rank ${i + 1}: ${countryOf(lo, la)}, ${hemi(la, 'N', 'S')} ${hemi(lo, 'E', 'W')}, ${ordinal(u.pct)} percentile. Show on map.`);
+    const la = lat[u.cell], lo = lon[u.cell], detail = unusualText(u, anomT, meta.t_first);
+    const mid = el('span'); mid.append(cellCountryName(u.cell)); mid.append(el('small', undefined, `${hemi(la, 'N', 'S')} ${hemi(lo, 'E', 'W')}`)); mid.append(el('small', undefined, detail));
+    b.append(el('span', 'rk', String(i + 1)), mid, el('span', 'pc', unusualBadge(u)));
+    b.setAttribute('aria-label', `Rank ${i + 1}: ${cellCountryName(u.cell)}, ${hemi(la, 'N', 'S')} ${hemi(lo, 'E', 'W')}. ${detail}. Show on map.`);
     b.addEventListener('click', () => { setMapMode('anomaly'); fireMap?.flyTo(lo, la, 7); $('map').scrollIntoView({ block: 'nearest' }); });
     li.append(b); ol.append(li);
   });
@@ -672,7 +681,8 @@ function buildHud(): HudData {
     ytd: yt && Number.isFinite(yt.pct) ? { big: sgn(yt.pct), sub: `${fmt(yt.value)} detections, Jan\u2013${MONTH_ABBR[yt.months - 1]}` } : { big: '\u2014', sub: 'not enough history' },
     nrtNote: `Months from ${tLabel(meta.t_nrt_from)} are provisional (NRT).`,
     bars: tm ? { years: tm.histYears, values: tm.hist, curYear: tm.year, cur: tm.value, median: tm.median, title: `${MONTH_FULL[tm.month - 1]} across years` } : null,
-    top: anom ? topUnusual(anom, aoiCells, 3).map((u) => ({ label: `${countryOf(lon[u.cell], lat[u.cell])}, ${hemi(lat[u.cell], 'N', 'S')} ${hemi(lon[u.cell], 'E', 'W')}`, pct: `${ordinal(u.pct)} pct`, lon: lon[u.cell], lat: lat[u.cell] })) : [],
+    topEmpty: anom && !unusualRanked()!.list.length ? noUnusualText(anomT) : null,
+    top: anom ? unusualRanked()!.list.slice(0, 3).map((u) => ({ label: `${cellCountryName(u.cell)}, ${hemi(lat[u.cell], 'N', 'S')} ${hemi(lon[u.cell], 'E', 'W')}`, pct: unusualBadge(u), lon: lon[u.cell], lat: lat[u.cell] })) : [],
   };
 }
 function fsApi(): FsApi {
@@ -814,11 +824,14 @@ function wireExtras(): void {
 }
 async function boot(): Promise<void> {
   applyThemeMode(themeMode(), false);
+  if (import.meta.env.DEV && new URLSearchParams(location.search).has('ember-demo')) { void import('./ui/emberDemo').then((m) => m.showEmberDemo()); }
   enhanceAll();
   trackHeader();
   setStatus('Loading data\u2026');
   try {
-    [meta, regions, countries, cellIds] = await Promise.all([loadMeta(), loadRegions(), loadCountries(), loadCells()]);
+    let cd: { cells: string[]; country: string[] | null };
+    [meta, regions, countries, cd] = await Promise.all([loadMeta(), loadRegions(), loadCountries(), loadCells()]);
+    cellIds = cd.cells; cellCountry = cd.country;
   } catch (e) { setStatus(`Could not load the data files (${(e as Error).message}).`, () => void boot()); return; }
   partial = await loadPartial();
   setStatus('');

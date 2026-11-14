@@ -9,7 +9,12 @@ export interface Countries { type: string; features: { properties: { id: string;
 export const loadMeta = () => getJson<Meta>('meta.json');
 export const loadRegions = async () => (await getJson<{ regions: Region[] }>('regions.json')).regions;
 export const loadCountries = () => getJson<Countries>('countries.geojson');
-export const loadCells = async () => (await getJson<{ cells: string[] }>('cells.json')).cells;
+/** cells.json: `cells` plus an optional parallel `country` array (ISO3 per cell). */
+export const loadCells = async (): Promise<{ cells: string[]; country: string[] | null }> => {
+  const j = await getJson<{ cells: string[]; country?: unknown }>('cells.json');
+  const c = Array.isArray(j.country) && j.country.length === j.cells.length && j.country.every((x) => typeof x === 'string') ? (j.country as string[]) : null;
+  return { cells: j.cells, country: c };
+};
 export const loadMonthly = () => getJson<Monthly>('monthly.json');
 export interface Partial { t_month: number; days: number; c: number[]; t: number[]; harm: number[]; regions?: Record<string, { t: number[]; harm: number[] }> }
 /** partial.json is optional: same-days history for the current partial month. */

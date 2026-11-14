@@ -511,3 +511,39 @@ a.iconbtn { text-decoration: none; }
   .block.proof .insights .v, .block.proof .insights .v.small { grid-column: 2; grid-row: 1 / span 2; margin: 0; padding: 0; text-align: right; font-size: 22px; white-space: pre-line; }
   .block.proof .insights .v.small { font-size: 15px; }
 }
+
+/* Ember, the SI assistant */
+.ember { display: inline-block; line-height: 0; flex: none; --em-glow: 1; }
+.ember svg { overflow: visible; }
+.ember .em-wl { transform-origin: 21px 32px; transform-box: view-box; } .ember .em-wr { transform-origin: 43px 32px; transform-box: view-box; }
+.ember .em-eye { transform-origin: 32px 32px; transform-box: view-box; } .ember .em-orbit { transform-origin: 32px 32px; transform-box: view-box; }
+.ember .em-beam, .ember .em-spark { opacity: 0; } .ember .em-all { transform-origin: 32px 32px; transform-box: view-box; }
+.ember:not(.static) .em-all { animation: em-float 4s ease-in-out infinite alternate; }
+.ember:not(.static) .em-eye { animation: em-blink 6s infinite; }
+@keyframes em-float { from { transform: translateY(-2px); } to { transform: translateY(2px); } }
+@keyframes em-blink { 0%, 93%, 100% { transform: scaleY(1); } 96% { transform: scaleY(.1); } }
+.ember-host:hover .em-wl, .ember-host:focus-visible .em-wl { animation: em-wave-l .7s ease-in-out 2; } .ember-host:hover .em-wr, .ember-host:focus-visible .em-wr { animation: em-wave-r .7s ease-in-out 2; }
+@keyframes em-wave-l { 50% { transform: rotate(-6deg); } } @keyframes em-wave-r { 50% { transform: rotate(6deg); } }
+.ember[data-state="thinking"] .em-beam { opacity: 1; animation: em-scan 1.2s ease-in-out infinite; } .ember[data-state="thinking"] .em-orbit { animation: em-spin 3s linear infinite; }
+@keyframes em-scan { 0% { transform: translateY(-8px) scaleY(.6); opacity: 0; } 30% { opacity: 1; } 100% { transform: translateY(4px) scaleY(1); opacity: 0; } }
+@keyframes em-spin { to { transform: rotate(360deg); } }
+.ember[data-state="answered"] .em-eye { animation: em-pulse .6s ease-out 1; } @keyframes em-pulse { 40% { transform: scale(1.5); filter: brightness(1.4); } }
+.ember[data-state="refused"] .em-eye { opacity: .4; } .ember[data-state="refused"] .em-wl { transform: rotate(14deg); transition: transform .3s; } .ember[data-state="refused"] .em-wr { transform: rotate(-14deg); transition: transform .3s; }
+.ember[data-state="error"] .em-spark { opacity: 1; }
+@media (prefers-reduced-motion: reduce) {
+  .ember *, .ember-host:hover .em-wl, .ember-host:hover .em-wr { animation: none !important; transition: none !important; }
+  .ember[data-state="thinking"] .em-beam { opacity: .6; }
+}
+.askbtn.ember-host { display: inline-flex; align-items: center; gap: 6px; padding: 0 14px 0 8px; }
+.ask-label { font-weight: 600; }
+@media (max-width: 640px) { .askbtn.ember-host { width: 40px; height: 40px; padding: 0; justify-content: center; border-radius: 50%; } .ask-label { display: none; } }
+.ember-bubble { position: fixed; z-index: 70; max-width: 220px; padding: 9px 12px; border-radius: 12px; background: var(--surface); border: 1px solid var(--ember); box-shadow: 0 8px 28px rgba(0, 0, 0, .3); font-size: 13px; color: var(--ink); animation: bub-in 240ms ease-out; }
+.ember-bubble::before { content: ''; position: absolute; top: -6px; right: 22px; width: 10px; height: 10px; background: var(--surface); border-left: 1px solid var(--ember); border-top: 1px solid var(--ember); transform: rotate(45deg); }
+@keyframes bub-in { from { opacity: 0; transform: translateY(6px); } }
+@media (prefers-reduced-motion: reduce) { .ember-bubble { animation: none; } }
+.ember.hello .em-all { animation: em-hello 1s ease-out 1, em-float 4s ease-in-out 1s infinite alternate !important; } @keyframes em-hello { from { transform: translateY(14px) scale(.6); opacity: 0; } }
+.a-title { display: flex; align-items: center; gap: 10px; min-width: 0; } .a-title h2 { font-size: 15px; line-height: 1.2; } .a-title small { display: block; font: 400 11.5px var(--font-body); color: var(--ink-2); }
+.a-hello { display: grid; justify-items: center; gap: 8px; text-align: center; padding: 8px 6px; } .a-hello p { font-size: 13.5px; color: var(--ink-2); max-width: 36ch; }
+.am.bot { position: relative; padding-left: 36px; } .am.bot .ember { position: absolute; left: 8px; top: 9px; }
+.demo-ember { position: fixed; inset: 0; z-index: 200; background: var(--bg); display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); align-content: center; gap: 24px; padding: 40px; }
+.demo-ember figure { margin: 0; display: grid; justify-items: center; gap: 10px; } .demo-ember figcaption { font: 500 12px var(--font-mono); }

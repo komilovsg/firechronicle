@@ -7,6 +7,7 @@ const STEPS: Step[] = [
   { target: '#outlook-wrap', title: 'High-activity months ahead', body: 'For each of the next 12 months, how often that month was unusually busy in recent years. It is climatology, not a forecast.' },
   { target: '#before-after', title: 'Why harmonize?', body: 'Joining the two sensors without calibration flips the sign of the change. This panel puts the naive result next to the calibrated one.' },
   { target: '[aria-labelledby="h-exp"]', title: 'Export', body: 'Download hotspots as CSV, the monthly series, or a briefing card image to share.' },
+  { target: '#ask-btn', title: 'Meet Ember', body: 'Ask questions, or say "show Kazakhstan, August 2021" and the map follows.' },
 ];
 const KEY = 'fc-tour-done';
 export const tourSeen = (): boolean => { try { return localStorage.getItem(KEY) === '1'; } catch { return true; } };
@@ -64,7 +65,7 @@ export function startTour(): void {
     requestAnimationFrame(place);
   };
   const close = (): void => {
-    active = false; markSeen(); root.remove(); removeEventListener('keydown', onKey, true); removeEventListener('scroll', place); removeEventListener('resize', place);
+    active = false; markSeen(); root.remove(); window.dispatchEvent(new Event('fc-tour-end')); removeEventListener('keydown', onKey, true); removeEventListener('scroll', place); removeEventListener('resize', place);
     returnTo?.focus?.();
   };
   const onKey = (e: KeyboardEvent): void => {

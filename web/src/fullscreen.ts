@@ -10,6 +10,7 @@ export interface HudData {
   nrtNote: string;
   bars: { years: number[]; values: number[]; curYear: number; cur: number; median: number; title: string } | null;
   top: { label: string; pct: string; lon: number; lat: number }[];
+  topEmpty: string | null;
 }
 export interface FsApi {
   getHud(): HudData; flyTo(lon: number, lat: number): void; resetView(): void; zoom(d: 1 | -1): void; resize(): void;

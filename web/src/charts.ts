@@ -61,7 +61,7 @@ export function calendarOption(i: CalInput): Opt {
     grid: { left: 46, right: 12, top: 38, bottom: 46 },
     xAxis: { type: 'category', data: MONTH_ABBR, position: 'top', splitArea: { show: false }, ...axisCommon(th), splitLine: { show: false } },
     yAxis: { type: 'category', data: i.years.map(String), inverse: true, ...axisCommon(th), splitLine: { show: false }, axisLabel: { color: th.ink3, fontSize: 10, fontFamily: mono, interval: (idx: number) => idx % 2 === 0 || window.innerWidth > 768 } },
-    visualMap: { type: 'continuous', min: 0, max: Math.max(1, i.vmax), dimension: 2, seriesIndex: 0, calculable: false, orient: 'horizontal', left: 'center', bottom: 2, itemWidth: 10, itemHeight: 160, text: [`${fmt(i.vmax)}+`, '0'], textStyle: { color: th.ink2, fontFamily: mono, fontSize: 11 }, inRange: { color: SEQ }, outOfRange: { color: SEQ[9] } },
+    visualMap: [{ type: 'continuous', min: 0, max: Math.max(1, i.vmax), dimension: 2, seriesIndex: 0, calculable: false, orient: 'horizontal', left: 'center', bottom: 2, itemWidth: 10, itemHeight: 160, text: [`${fmt(i.vmax)}+`, '0'], textStyle: { color: th.ink2, fontFamily: mono, fontSize: 11 }, inRange: { color: SEQ }, outOfRange: { color: SEQ[9] } }, { type: 'piecewise', show: false, seriesIndex: 1, dimension: 2, pieces: [{ min: -1e9, max: 1e9, color: th.empty }] }],
     series: [
       { type: 'heatmap', data, emphasis: { itemStyle: { borderColor: th.ink, borderWidth: 1.5 } }, itemStyle: { borderColor: th.bg, borderWidth: 1 }, progressive: 0 },
       { type: 'heatmap', data: empty, silent: false, emphasis: { disabled: true }, itemStyle: { borderColor: th.bg, borderWidth: 1 }, progressive: 0 },
