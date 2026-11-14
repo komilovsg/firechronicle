@@ -255,7 +255,7 @@ function renderInsights(): void {
   add('Naive stitching', h.naive, 'bad', 'wrong: reverses the trend');
   add('Harmonized', h.harm, '', h.modis !== DASH && h.modis === h.harm ? 'matches MODIS alone' : 'change in mean annual total');
   const r2 = cv ? num(Number(cv.r2)) : null, bias = cv ? num(Number(cv.bias.replace('\u2212', '-').replace('%', ''))) : null;
-  add('Cross-validated', r2 !== null && bias !== null ? `Bias ${Math.abs(bias).toFixed(1)}% \u00b7 R\u00b2 ${r2.toFixed(2)}` : DASH, 'small', cv ? `leave-one-year-out, ${cv.sensor} vs MODIS` : 'not available');
+  add('Cross-validated', r2 !== null && bias !== null ? `Bias ${Math.abs(bias).toFixed(1)}%\nR\u00b2 ${r2.toFixed(2)}` : DASH, 'small', cv ? `leave-one-year-out, ${cv.sensor} vs MODIS` : 'not available');
 }
 
 /* ---------- map frame ---------- */
@@ -512,7 +512,7 @@ async function boot(): Promise<void> {
   cellIds.forEach((id, i) => { const [a, b] = cellToLatLng(id); lat[i] = a; lon[i] = b; });
   $('badge-sample').hidden = !meta.sample;
   const fb = $('badge-fresh'); fb.hidden = false;
-  fb.textContent = `Updated ${meta.generated_at.slice(0, 10)}${meta.data_through ? ` \u00b7 data through ${meta.data_through}` : ''} \u00b7 latest month provisional (NRT)`;
+  fb.textContent = `Updated ${meta.generated_at.slice(0, 10)}${meta.data_through ? ` \u00b7 data through ${meta.data_through}` : ''}`; $('badge-nrt').hidden = false;
   renderInsights(); renderProof();
   wireControls(); renderMethod();
   $<HTMLDetailsElement>('method').addEventListener('toggle', () => { if ($<HTMLDetailsElement>('method').open) void ensureExplainer(); });
