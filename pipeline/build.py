@@ -121,20 +121,30 @@ def load_points() -> tuple[pl.DataFrame, dict]:
     hist = hist.rename({"date": "acq_date", "time": "acq_time", "lat": "latitude", "lon": "longitude"})
     hist = hist.filter(pl.col("acq_date") < window.isoformat()).with_columns(
         sensor=pl.col("satellite").str.to_lowercase().replace_strict(SAT_SENSOR, default=None))
-    hist = assign_country(hist.select(KEEP + ["sensor", "processing"]))
+    if "country" in hist.columns:
+        hist = hist.select(KEEP + ["sensor", "processing", "country"])
+    else:  # older points files without a country column
+        hist = assign_country(hist.select(KEEP + ["sensor", "processing"]))
     recent = read_api_dir(RAW / "recent")
     log(f"history rows before {window}: {hist.height:,}; recent rows: {recent.height:,}")
     prev = json.loads((OUT / "meta.json").read_text()) if (OUT / "meta.json").exists() else {}
     return pl.concat([hist, recent], how="vertical_relaxed"), prev.get("cleaning", {})
 
 
+BORDERS = Path(__file__).resolve().parent / "countries_50m.geojson"   # exact Natural Earth 1:50m, 6 countries
+
+
 def country_shapes():
     ne = RAW / "ne" / "ne_50m_admin_0_countries.geojson"
     if ne.exists():
         gj = json.loads(ne.read_text())
-        return {f["properties"]["ADM0_A3"]: shape(f["geometry"]) for f in gj["features"]
-                if f["properties"]["ADM0_A3"] in CIDS}
-    gj = json.loads((OUT / "countries.geojson").read_text())   # simplified copy shipped with the site
+        feats = [f for f in gj["features"] if f["properties"]["ADM0_A3"] in CIDS]
+        if not BORDERS.exists():
+            BORDERS.write_text(json.dumps({"type": "FeatureCollection", "features": [
+                {"type": "Feature", "properties": {"id": f["properties"]["ADM0_A3"]}, "geometry": f["geometry"]}
+                for f in feats]}, separators=(",", ":")))
+        return {f["properties"]["ADM0_A3"]: shape(f["geometry"]) for f in feats}
+    gj = json.loads(BORDERS.read_text())
     return {f["properties"]["id"]: shape(f["geometry"]) for f in gj["features"]}
 
 
@@ -500,7 +510,7 @@ def write_outputs(df, m, harm, sdc, pv, region_series, validation, cal, cleaning
     out = df.select(
         pl.col("acq_date").dt.strftime("%Y-%m-%d").alias("date"), pl.col("acq_time").alias("time"),
         pl.col("latitude").round(4).alias("lat"), pl.col("longitude").round(4).alias("lon"),
-        "satellite", "instrument", "confidence", "frp", "daynight", "type", "processing",
+        "satellite", "instrument", "confidence", "frp", "daynight", "type", "processing", "country",
         pl.col("acq_date").dt.year().alias("year"),
     ).sort("date", "time")
     years_written = set()

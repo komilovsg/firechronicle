@@ -91,6 +91,6 @@ Simplified boundaries of the 6 countries as a FeatureCollection. Properties: `{"
 ## `points/{year}.csv.gz`
 Raw cleaned detections for one year, all sensors, gzip-compressed CSV, loaded only when the user exports. Header:
 ```
-date,time,lat,lon,satellite,instrument,confidence,frp,daynight,type,processing
+date,time,lat,lon,satellite,instrument,confidence,frp,daynight,type,processing,country
 ```
 `processing` is `SP` (standard, science quality) or `NRT` (provisional). The browser decompresses with the native `DecompressionStream('gzip')`.
