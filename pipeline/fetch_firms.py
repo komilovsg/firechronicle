@@ -2,6 +2,7 @@
 
   python pipeline/fetch_firms.py country   # yearly SP country CSVs 2000-2025 (no key)
   python pipeline/fetch_firms.py api       # 2026 SP+NRT and NOAA-21 via Area API (needs FIRMS_MAP_KEY in .env)
+  python pipeline/fetch_firms.py recent    # daily update: last 6 months, SP where available else NRT
 
 Files land in data/raw/. Existing files are skipped, so reruns resume.
 """
@@ -20,7 +21,7 @@ COUNTRIES = ["Kazakhstan", "Uzbekistan", "Turkmenistan", "Kyrgyzstan", "Tajikist
 COUNTRY_PRODUCTS = {"modis": 2000, "viirs-snpp": 2012, "viirs-jpss1": 2018}
 LAST_COUNTRY_YEAR = 2025
 
-BBOX = "46,35,88,56"  # west,south,east,north: Central Asia
+BBOX = "46,29,88,56"  # west,south,east,north: Central Asia incl. southern Afghanistan
 TODAY = date.today()
 # (source, start, end) from /api/data_availability on 2026-11-14
 API_JOBS = [
@@ -70,34 +71,101 @@ def fetch_country():
     print(f"country: files={ok} missing(404)={missing}")
 
 
-def fetch_api():
+def _key():
     key = os.environ.get("FIRMS_MAP_KEY") or _read_env_key()
     if not key:
-        sys.exit("FIRMS_MAP_KEY missing in .env")
+        sys.exit("FIRMS_MAP_KEY missing (env or .env)")
+    return key
+
+
+def fetch_range(key, source, start, end, outdir):
+    """Fetch [start, end] for one source in 5-day chunks into outdir; returns (new_calls, rows)."""
+    calls = rows = 0
+    d = start
+    while d <= end:
+        span = min(5, (end - d).days + 1)
+        out = outdir / source / f"{d.isoformat()}_{span}d.csv"
+        if not out.exists():
+            url = f"https://firms.modaps.eosdis.nasa.gov/api/area/csv/{key}/{source}/{BBOX}/{span}/{d.isoformat()}"
+            try:
+                status, body = get(url)
+            except RuntimeError as e:  # never leak the key into logs
+                raise RuntimeError(str(e).replace(key, "***")) from None
+            text = body.decode("utf-8", "replace")
+            if status != 200 or not text.startswith("latitude"):
+                if "Exceeding allowed transaction limit" in text:
+                    print("limit hit, sleeping 10 min", flush=True)
+                    time.sleep(600)
+                    continue
+                raise RuntimeError(f"{source} {d}: unexpected response: {text[:200].replace(key, '***')}")
+            out.parent.mkdir(parents=True, exist_ok=True)
+            out.write_text(text)
+            calls += 1
+            time.sleep(0.3)
+        rows += max(0, out.read_text().count("\n") - 1)
+        d += timedelta(days=span)
+    return calls, rows
+
+
+def fetch_api():
+    key = _key()
     calls = rows = 0
     for source, start, end in API_JOBS:
-        d = start
-        while d <= end:
-            span = min(5, (end - d).days + 1)
-            out = RAW / "api" / source / f"{d.isoformat()}_{span}d.csv"
-            if not out.exists():
-                url = f"https://firms.modaps.eosdis.nasa.gov/api/area/csv/{key}/{source}/{BBOX}/{span}/{d.isoformat()}"
-                status, body = get(url)
-                text = body.decode("utf-8", "replace")
-                if status != 200 or not text.startswith("latitude"):
-                    if "Exceeding allowed transaction limit" in text:
-                        print("limit hit, sleeping 10 min")
-                        time.sleep(600)
-                        continue
-                    raise RuntimeError(f"{source} {d}: unexpected response: {text[:200]}")
-                out.parent.mkdir(parents=True, exist_ok=True)
-                out.write_text(text)
-                calls += 1
-                time.sleep(0.3)
-            rows += max(0, out.read_text().count("\n") - 1)
-            d += timedelta(days=span)
+        c, r = fetch_range(key, source, start, end, RAW / "api")
+        calls += c
+        rows += r
         print(f"{source}: done, cumulative rows={rows}", flush=True)
     print(f"api: new calls={calls} total rows={rows}")
+
+
+def availability(key=None):
+    """Official date coverage per FIRMS source -> {source: (min_date, max_date)}; also saved to data/raw/."""
+    key = key or _key()
+    status, body = get(f"https://firms.modaps.eosdis.nasa.gov/api/data_availability/csv/{key}/ALL")
+    text = body.decode()
+    if status != 200 or not text.startswith("data_id"):
+        raise RuntimeError("data_availability failed: " + text[:200].replace(key, "***"))
+    RAW.mkdir(parents=True, exist_ok=True)
+    (RAW / "availability.csv").write_text(text)
+    out = {}
+    for line in text.strip().splitlines()[1:]:
+        sid, a, b = line.split(",")[:3]
+        out[sid] = (date.fromisoformat(a), date.fromisoformat(b))
+    return out
+
+
+RECENT_MONTHS = 6  # SP lags NRT by 2-5 months; refresh this rolling window every run
+SENSOR_SOURCES = {"MODIS": ("MODIS_SP", "MODIS_NRT"), "SNPP": ("VIIRS_SNPP_SP", "VIIRS_SNPP_NRT"),
+                  "NOAA20": ("VIIRS_NOAA20_SP", "VIIRS_NOAA20_NRT"), "NOAA21": ("VIIRS_NOAA21_SP", "VIIRS_NOAA21_NRT")}
+
+
+def recent_start(today: date) -> date:
+    m = today.month - RECENT_MONTHS
+    y = today.year + (m - 1) // 12
+    return date(y, (m - 1) % 12 + 1, 1)
+
+
+def fetch_recent():
+    """Daily update: re-fetch the last RECENT_MONTHS: SP where available, NRT after it."""
+    import shutil
+    key = _key()
+    av = availability(key)
+    today = max(b for _, b in av.values())
+    start = recent_start(today)
+    outdir = RAW / "recent"
+    shutil.rmtree(outdir, ignore_errors=True)
+    total = 0
+    for name, (sp, nrt) in SENSOR_SOURCES.items():
+        sp_end = av[sp][1] if sp in av else start - timedelta(days=1)
+        if sp_end >= start:
+            total += fetch_range(key, sp, start, sp_end, outdir)[1]
+        if nrt in av:
+            a = max(start, sp_end + timedelta(days=1), av[nrt][0])
+            if a <= av[nrt][1]:
+                total += fetch_range(key, nrt, a, av[nrt][1], outdir)[1]
+        print(f"{name}: ok, cumulative rows={total}", flush=True)
+    (outdir / "WINDOW").write_text(start.isoformat())
+    print(f"recent window from {start}: rows={total}")
 
 
 def _read_env_key():
@@ -110,4 +178,5 @@ def _read_env_key():
 
 
 if __name__ == "__main__":
-    {"country": fetch_country, "api": fetch_api}[sys.argv[1]]()
+    {"country": fetch_country, "api": fetch_api, "recent": fetch_recent,
+     "availability": lambda: print(availability())}[sys.argv[1]]()
