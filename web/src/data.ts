@@ -26,3 +26,11 @@ export async function loadPartial(): Promise<Partial | null> {
     return j && Array.isArray(j.c) && Array.isArray(j.t) && Array.isArray(j.harm) && Number.isFinite(j.t_month) && Number.isFinite(j.days) ? j : null;
   } catch { return null; }
 }
+/** recent.json is optional (daily harmonized series of the last ~60 days per region). */
+export async function loadRecent(): Promise<import('./lib/dashboard').Recent | null> {
+  try {
+    const r = await fetch('./data/recent.json', { cache: 'no-cache' });
+    if (!r.ok) return null;
+    return (await import('./lib/dashboard')).parseRecent(await r.json());
+  } catch { return null; }
+}

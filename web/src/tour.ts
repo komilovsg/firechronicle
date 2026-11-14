@@ -1,12 +1,13 @@
-interface Step { target: string; title: string; body: string }
+interface Step { target: string; title: string; body: string; view?: string }
 const STEPS: Step[] = [
-  { target: '#top', title: 'What this is', body: 'One fire history for Central Asia, from 2000 to today. Two satellite families, MODIS and VIIRS, count fires differently. FireChronicle puts them on one scale so any two years can be compared fairly.' },
-  { target: '.toolbar', title: 'Pick an area', body: 'Choose a country, draw a polygon on the map, or enter a point and radius. Every number and chart follows your area and the years you select.' },
-  { target: '#cal-stage', title: 'Read the calendar', body: 'Each row is a year and each column a month. Brighter means more fire detections. Hatched cells are provisional recent data. Click a cell to see that month on the map.' },
-  { target: '[aria-labelledby="h-month"]', title: 'Is this month normal?', body: 'The current month is compared with the same month in earlier years: how far above or below the median it is, and where it ranks.' },
-  { target: '#outlook-wrap', title: 'High-activity months ahead', body: 'For each of the next 12 months, how often that month was unusually busy in recent years. It is climatology, not a forecast.' },
-  { target: '#before-after', title: 'Why harmonize?', body: 'Joining the two sensors without calibration flips the sign of the change. This panel puts the naive result next to the calibrated one.' },
-  { target: '[aria-labelledby="h-exp"]', title: 'Export', body: 'Download hotspots as CSV, the monthly series, or a briefing card image to share.' },
+  { target: '#top', view: 'overview', title: 'What this is', body: 'One fire history for Central Asia, from 2000 to today. Two satellite families, MODIS and VIIRS, count fires differently. FireChronicle puts them on one scale so any two years can be compared fairly.' },
+  { target: '.tb-ctrl', view: 'overview', title: 'Pick an area', body: 'Choose a country here, or draw a polygon or a point and radius in the Map section. Every number and chart follows your area and the years you select.' },
+  { target: '#d-kpis', view: 'overview', title: 'Read the dashboard', body: 'The Overview shows the last 7 days, this month, the year so far and the season, each against what is normal for the same period.' },
+  { target: '#cal-stage', view: 'calendar', title: 'Read the calendar', body: 'Each row is a year and each column a month. Brighter means more fire detections. Hatched cells are provisional recent data. Click a cell to see that month on the map.' },
+  { target: '[aria-labelledby="h-month"]', view: 'calendar', title: 'Is this month normal?', body: 'The current month is compared with the same month in earlier years: how far above or below the median it is, and where it ranks.' },
+  { target: '#outlook-wrap', view: 'outlook', title: 'High-activity months ahead', body: 'For each of the next 12 months, how often that month was unusually busy in recent years. It is climatology, not a forecast.' },
+  { target: '#before-after', view: 'data', title: 'Why harmonize?', body: 'Joining the two sensors without calibration flips the sign of the change. This panel puts the naive result next to the calibrated one.' },
+  { target: '[aria-labelledby="h-exp"]', view: 'data', title: 'Export', body: 'Download hotspots as CSV, the monthly series, or a briefing card image to share.' },
   { target: '#ask-btn', title: 'Meet Ember', body: 'Ask questions, or say "show Kazakhstan, August 2021" and the map follows.' },
 ];
 const KEY = 'fc-tour-done';
@@ -57,7 +58,9 @@ export function startTour(): void {
   };
   const show = (n: number): void => {
     i = Math.max(0, Math.min(STEPS.length - 1, n));
-    const st = STEPS[i], el = document.querySelector<HTMLElement>(st.target);
+    const st = STEPS[i];
+    if (st.view) window.dispatchEvent(new CustomEvent('fc-view', { detail: { view: st.view, push: false } }));
+    const el = document.querySelector<HTMLElement>(st.target);
     count.textContent = `Step ${i + 1} of ${STEPS.length}`; title.textContent = st.title; body.textContent = st.body;
     back.disabled = i === 0; next.textContent = i === STEPS.length - 1 ? 'Done' : 'Next';
     if (el) { el.style.scrollMarginTop = innerWidth < 700 ? '70px' : '90px'; el.scrollIntoView({ block: 'start', behavior: 'auto' }); }

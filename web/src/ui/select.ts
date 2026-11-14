@@ -42,10 +42,14 @@ export function enhanceSelect(sel: HTMLSelectElement): void {
   const opts = (): HTMLOptionElement[] => [...sel.options];
   function sync(): void {
     const o = sel.selectedOptions[0];
-    txt.textContent = o ? o.textContent : '';
+    txt.textContent = '';
+    const pre = sel.dataset.prefix;
+    if (pre) { const ps = document.createElement('span'); ps.className = 'pre'; ps.textContent = pre; txt.append(ps, ' '); }
+    txt.append(o?.textContent ?? '');
+    if (!sel.closest('label')) btn.setAttribute('aria-label', `${labelOf(sel)}: ${o?.textContent ?? ''}`);
     btn.disabled = sel.disabled;
     const longest = Math.max(0, ...opts().map((x) => (x.textContent ?? '').length));
-    btn.style.minWidth = `${Math.min(longest, 30) + 5}ch`;
+    btn.style.minWidth = `${Math.min(longest, 30) + 5 + (pre ? pre.length + 1 : 0)}ch`;
   }
   new MutationObserver(sync).observe(sel, { childList: true, subtree: true, attributes: true, attributeFilter: ['disabled'] });
   sel.addEventListener('change', sync);
@@ -104,6 +108,16 @@ export function enhanceSelect(sel: HTMLSelectElement): void {
 
   function buildList(list: HTMLElement): void {
     list.textContent = '';
+    if (sel.dataset.quick === 'years') {
+      const q = document.createElement('div'); q.className = 'csel-quick';
+      for (const [k, t] of [['all', 'All years'], ['10', 'Last 10 years'], ['5', 'Last 5 years']] as const) {
+        const b = document.createElement('button'); b.type = 'button'; b.textContent = t;
+        b.addEventListener('mousedown', (e) => e.preventDefault());
+        b.addEventListener('click', () => { document.dispatchEvent(new CustomEvent('fc-years', { detail: { kind: k } })); close(true); });
+        q.append(b);
+      }
+      list.append(q);
+    }
     opts().forEach((o, i) => {
       const it = document.createElement('div');
       it.id = `${id}-o${i}`; it.className = 'csel-opt'; it.setAttribute('role', 'option');

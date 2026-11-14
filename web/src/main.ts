@@ -1,11 +1,15 @@
 import './style.css';
 import { el } from './ui/dom';
-import { cellToLatLng } from 'h3-js';
-import { loadMeta, loadRegions, loadCountries, loadCells, loadMonthly, loadPartial, type Countries, type Partial } from './data';
+import { createEmber } from './ui/ember';
+import { openInfoSheet } from './ui/sheet';
+import { initMapDrawer } from './ui/mapDrawer';
+import { cellToLatLng, cellToBoundary } from 'h3-js';
+import { loadMeta, loadRegions, loadCountries, loadCells, loadMonthly, loadPartial, loadRecent, type Countries, type Partial } from './data';
 import { CellIndex, seriesFromRegion, sensorTs, type Meta, type Region, type Series } from './lib/series';
 import { circlePolygon, bboxOf, geometryPolys, pointInPolys, type Poly, type Pt } from './lib/geo';
 import { encodeHash, parseHash, MAX_VERTS, type AoiSpec, type CalMode } from './lib/hash';
 import { MONTH_FULL, MONTH_ABBR, daysInMonth, monthOf, tFromYM, tLabel, yearOf } from './lib/time';
+import { nowDate } from './lib/clock';
 import { median, percentile } from './lib/stats';
 import { detectSeason, monthRanges, anomalies, annualTotals, buildSummary, climatology, ordinal, outlook, outlookText, thisMonthStats, type Mode } from './lib/analytics';
 import type * as ChartsMod from './charts';
@@ -24,6 +28,8 @@ import type { FsApi, HudData } from './fullscreen';
 import { parseRefresh } from './lib/freshness';
 import { encodeCmp, parseCmp } from './lib/cmp';
 import { ytdStats } from './lib/analytics';
+import { last7, deltaChip, seasonStatus, sensorStatus, statusOf, regionHist, activeCells, type Recent, type CountryRow } from './lib/dashboard';
+import { buildDash, renderStatus, renderKpis, renderTable, renderMiniMap, fillLegend, type DashModel, type Kpi, type MiniCell } from './dash';
 import { anomalyNow, anomalyBin, rankUnusual, unusualText, unusualBadge, noUnusualText, type CellAnomaly } from './lib/anomalyNow';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string): T => document.getElementById(id) as T;
@@ -42,6 +48,7 @@ let series: Series | null = null;
 let monthVmax = 1;
 let fireMap: FireMap | undefined, replay: Replay | undefined;
 let partial: Partial | null = null;
+let recent: Recent | null = null;
 let bm: BmId = 'mono', imgManual: string | null = null, imgKey = '', lastImgSync = 0, imgTimer = 0;
 let cmp: AoiSpec | null = null, cmpSeries: Series | null = null, cmpName = '';
 let legendKey = '';
@@ -52,6 +59,7 @@ let visuals: Promise<void> | null = null;
 const charts: Record<string, Chart> = {};
 const state: State = { aoi: { kind: 'region', id: 'central-asia' }, y0: 2000, y1: 2026, mode: 'harm', frameT: null, seasonYear: null };
 let lastYear = 2026;
+let lastKey = '';
 
 const MODE_LABEL: Record<CalMode, string> = { harm: 'Harmonized', modis: 'Raw MODIS', viirs: 'Raw VIIRS', naive: 'Naive splice', swipe: 'Swipe: naive vs harmonized' };
 const MODE_NOTE: Record<CalMode, string> = {
@@ -112,7 +120,7 @@ async function refresh(fit = true): Promise<void> {
   syncControls();
   writeHash();
   if (!aoiCells.length) { showEmpty(); drawShape(); return; }
-  $('panel').removeAttribute('data-empty');
+  $('panel').removeAttribute('data-empty'); $('dash-empty').textContent = '';
   series = getSeries();
   if (!series) {
     setStatus('Loading cell data for this area…');
@@ -129,11 +137,11 @@ async function refresh(fit = true): Promise<void> {
   renderCharts();
   drawShape();
   if (fit) fitMap();
-  void mapAfterIndex(token);
+  void postIndex(token);
 }
 function showEmpty(): void {
   $('panel').setAttribute('data-empty', '1');
-  const s = $('summary'); s.textContent = '';
+  const s = $('dash-empty'); s.textContent = '';
   s.append(el('div', 'empty-state', 'No fire detections have been recorded in this area. Try a larger polygon or radius, or pick a country.'));
   fireMap?.setHexes([], 1000);
   $('maplegend').textContent = ''; $('mapnote').textContent = '';
@@ -141,7 +149,9 @@ function showEmpty(): void {
 function drawShape(): void {
   fireMap?.setShape(state.aoi.kind === 'region' && state.aoi.id === 'central-asia' ? null : aoiRing);
 }
+let fitPending = false;
 function fitMap(): void {
+  if (view !== 'map') { fitPending = true; return; }
   let b: [number, number, number, number];
   if (aoiRing && state.aoi.kind !== 'region') b = bboxOf(aoiRing);
   else { const pts: Pt[] = aoiCells.map((i) => [lon[i], lat[i]] as Pt); b = bboxOf(aoiRing && state.aoi.kind === 'region' ? aoiRing : pts); b = [b[0] - 0.3, b[1] - 0.3, b[2] + 0.3, b[3] + 0.3]; }
@@ -234,34 +244,31 @@ function renderCharts(): void {
   // before / after
   const snppEnd = sensorTs(meta).snppEnd;
   const hl = headline(meta.validation);
-  if (cmpSeries) chart('ba', 'ba-chart').setOption(C!.compareAnnualOption(s, cmpSeries, aoiName, cmpName, state.y0, state.y1, meta.t_first, meta.t_last, th), true);
-  else chart('ba', 'ba-chart').setOption(beforeAfterOption(s, state.y0, state.y1, meta.t_first, meta.t_last, snppEnd, th, { harm: cpToX(hl.harmCp), naive: cpToX(hl.naiveCp), harmLabel: hl.harmCp ?? '', naiveLabel: hl.naiveCp ?? '', snppX: yearOf(sensorTs(meta).snppStart) + ((sensorTs(meta).snppStart % 12) / 12), snppLabel: tLabel(sensorTs(meta).snppStart), endLabel: tLabel(snppEnd) }), true);
+  chart('ba', 'ba-chart').setOption(beforeAfterOption(s, state.y0, state.y1, meta.t_first, meta.t_last, snppEnd, th, { harm: cpToX(hl.harmCp), naive: cpToX(hl.naiveCp), harmLabel: hl.harmCp ?? '', naiveLabel: hl.naiveCp ?? '', snppX: yearOf(sensorTs(meta).snppStart) + ((sensorTs(meta).snppStart % 12) / 12), snppLabel: tLabel(sensorTs(meta).snppStart), endLabel: tLabel(snppEnd) }), true);
   const tot = (a: Float64Array, y: number) => { let x = 0; for (let t = tFromYM(y, 1); t <= tFromYM(y, 12); t++) x += a[t]; return x; };
   $('ba-chart').setAttribute('aria-label', `Annual totals, naive splice versus harmonized. 2011: naive ${fmt(tot(s.naive, 2011))}, harmonized ${fmt(tot(s.harm, 2011))}. 2012: naive ${fmt(tot(s.naive, 2012))}, harmonized ${fmt(tot(s.harm, 2012))}.`);
   replay?.setData(harm, meta.t_first, meta.t_last, th); hudPing();
+  renderCompareView(); renderDash(); renderLast24();
 }
 
-function renderCompareCalendar(): void {
-  const A = series!, B = cmpSeries!, th = theme(), mode = state.mode === 'swipe' ? 'harm' : (state.mode as Mode);
+function renderCompareView(): void {
+  $('cmp-empty').hidden = !!cmpSeries; $('cmp-wrap').hidden = !cmpSeries; $('cmp-annual').hidden = !cmpSeries;
+  if (!cmpSeries || !C) return;
+  const A = series!, B = cmpSeries, th = theme(), mode = state.mode === 'swipe' ? 'harm' : (state.mode as Mode);
   const years: number[] = []; for (let y = state.y0; y <= state.y1; y++) years.push(y);
   const pos: number[] = [];
   for (const a of [A[mode], B[mode]]) for (let t = meta.t_first; t <= meta.t_last; t++) if (a[t] > 0) pos.push(a[t]);
   const vmax = Math.max(1, Math.round(percentile(pos, 98)));
   const mk = (sr: Series, label: string) => C!.calendarOption({ s: sr, arr: sr[mode], years, tFirst: meta.t_first, tLast: meta.t_last, tNrt: meta.t_nrt_from, vmax, selT: null, th, label: MODE_LABEL[mode] + ': ' + label });
-  $('cal-stage').hidden = true; $('cmp-wrap').hidden = false;
   $('cmp-title-a').textContent = aoiName; $('cmp-title-b').textContent = cmpName;
   const a = chart('cmpA', 'cmp-a'), b = chart('cmpB', 'cmp-b');
   a.resize(); b.resize(); a.setOption(mk(A, aoiName), true); b.setOption(mk(B, cmpName), true);
   $('cmp-a').setAttribute('aria-label', `Calendar heatmap for ${aoiName}, same colour scale as ${cmpName}, 0 to ${fmt(vmax)} or more`);
   $('cmp-b').setAttribute('aria-label', `Calendar heatmap for ${cmpName}, same colour scale as ${aoiName}, 0 to ${fmt(vmax)} or more`);
-  $('cal-note').textContent = `Both areas share one colour scale (0 to ${fmt(vmax)}+). ${MODE_NOTE[mode]}`;
-  const lg = $('cal-legend'); lg.textContent = '';
-  for (const [cls, txt] of [['nrt', `Provisional (NRT), from ${tLabel(meta.t_nrt_from)}`], ['empty', 'No data for this source']] as const) { const li = el('li'); li.append(el('span', `sw ${cls}`), txt); lg.append(li); }
+  chart('cmpAnn', 'cmp-annual').setOption(C.compareAnnualOption(A, B, aoiName, cmpName, state.y0, state.y1, meta.t_first, meta.t_last, th), true);
 }
 function renderCalendar(): void {
   if (!C) return;
-  if (cmpSeries) { renderCompareCalendar(); return; }
-  $('cmp-wrap').hidden = true; $('cal-stage').hidden = false;
   const s = series!, th = theme(), mode = state.mode;
   const years: number[] = []; for (let y = state.y0; y <= state.y1; y++) years.push(y);
   const swipe = mode === 'swipe';
@@ -364,14 +371,16 @@ function renderInsights(): void {
 }
 
 /* ---------- map frame ---------- */
-async function mapAfterIndex(token: number): Promise<void> {
+async function setMapHexes(): Promise<void> {
+  if (!fireMap || !aoiCells.length) return;
   const cells = aoiCells.map((idx) => ({ idx, id: cellIds[idx] }));
   const dLon = Math.max(...aoiCells.map((i) => lon[i])) - Math.min(...aoiCells.map((i) => lon[i])), dLat = Math.max(...aoiCells.map((i) => lat[i])) - Math.min(...aoiCells.map((i) => lat[i]));
   const diag = Math.hypot(dLon * 80, dLat * 111) * 1000;
   const height = Math.min(150000, Math.max(12000, diag * 0.08));
-  if (!fireMap) return;
-  await fireMap.ready;
-  fireMap.setHexes(cells, height);
+  const fm = fireMap; await fm.ready; fm.setHexes(cells, height);
+}
+async function postIndex(token: number): Promise<void> {
+  void setMapHexes();
   try { await ensureMonthly(); } catch { $('mapnote').textContent = 'Cell data failed to load.'; return; }
   if (token !== renderToken || !index) return;
   const all: number[] = [];
@@ -380,7 +389,7 @@ async function mapAfterIndex(token: number): Promise<void> {
   for (let r = 0; r < m.c.length; r++) if (mask[m.c[r]] && m.harm[r] > 0) all.push(m.harm[r]);
   monthVmax = Math.max(1, percentile(all, 98));
   anomT = anomalyTarget(); anom = anomalyNow(index, aoiCells, anomT, meta.t_first); renderUnusual();
-  renderMap();
+  renderDash(); renderMap();
 }
 function anomalyTarget(): number {
   return pdays() < daysInMonth(yearOf(meta.t_last), monthOf(meta.t_last)) ? meta.t_last - 1 : meta.t_last;
@@ -397,21 +406,28 @@ function countryOf(lo: number, la: number): string {
 }
 const hemi = (v: number, p: string, n: string): string => `${Math.abs(v).toFixed(1)}\u00b0${v >= 0 ? p : n}`;
 function unusualRanked() { return anom ? rankUnusual(anom, aoiCells, { k: 5, groupOf: (c) => cellCountryName(c) }) : null; }
-function renderUnusual(): void {
-  const note = $('unusual-note'), ol = $('toplist'); ol.textContent = '';
-  if (!anom) { note.textContent = 'Loading cell data\u2026'; return; }
-  const { list } = unusualRanked()!;
-  if (!list.length) { note.textContent = noUnusualText(anomT); hudPing(); return; }
-  note.textContent = `Latest complete month, ${MONTH_FULL[monthOf(anomT) - 1]} ${yearOf(anomT)}, compared with the same month of earlier years, cell by cell. Cells need 5+ years of history and a clearly busy month. Click one to see it on the map.`;
+function fillTop(ol: HTMLElement, list: NonNullable<ReturnType<typeof unusualRanked>>['list']): void {
+  ol.textContent = '';
   list.forEach((u, i) => {
     const li = el('li'), b = el('button') as HTMLButtonElement; b.type = 'button';
     const la = lat[u.cell], lo = lon[u.cell], detail = unusualText(u, anomT, meta.t_first);
     const mid = el('span'); mid.append(cellCountryName(u.cell)); mid.append(el('small', undefined, `${hemi(la, 'N', 'S')} ${hemi(lo, 'E', 'W')}`)); mid.append(el('small', undefined, detail));
     b.append(el('span', 'rk', String(i + 1)), mid, el('span', 'pc', unusualBadge(u)));
     b.setAttribute('aria-label', `Rank ${i + 1}: ${cellCountryName(u.cell)}, ${hemi(la, 'N', 'S')} ${hemi(lo, 'E', 'W')}. ${detail}. Show on map.`);
-    b.addEventListener('click', () => { setMapMode('anomaly'); fireMap?.flyTo(lo, la, 7); $('map').scrollIntoView({ block: 'nearest' }); });
+    b.addEventListener('click', () => { setView('map', { push: true }); void ensureMap().then(() => { setMapMode('anomaly'); fireMap?.flyTo(lo, la, 7); }); });
     li.append(b); ol.append(li);
   });
+}
+function renderUnusual(): void {
+  const notes = [$('unusual-note'), document.getElementById('dash-note')].filter((x): x is HTMLElement => !!x);
+  const lists = [$('toplist'), document.getElementById('dash-top'), document.getElementById('drawer-top')];
+  const setNote = (t: string): void => notes.forEach((n) => { n.textContent = t; });
+  lists.forEach((l) => { if (l) l.textContent = ''; });
+  if (!anom) { setNote('Loading cell data\u2026'); return; }
+  const { list } = rankUnusual(anom, aoiCells, { k: 10, groupOf: (c) => cellCountryName(c) });
+  if (!list.length) { setNote(noUnusualText(anomT)); hudPing(); return; }
+  setNote(`Latest complete month, ${MONTH_FULL[monthOf(anomT) - 1]} ${yearOf(anomT)}, compared with the same month of earlier years, cell by cell. Cells need 5+ years of history and a clearly busy month. Click one to see it on the map.`);
+  fillTop($('toplist'), list); const d = document.getElementById('dash-top'); if (d) fillTop(d, list.slice(0, 5)); const dd = document.getElementById('drawer-top'); if (dd) fillTop(dd, list.slice(0, 3));
   hudPing();
 }
 function setMapMode(m: 'activity' | 'anomaly'): void {
@@ -468,13 +484,15 @@ function renderMap(): void {
 function syncControls(): void {
   const sel = $<HTMLSelectElement>('aoi-region');
   sel.value = state.aoi.kind === 'region' ? state.aoi.id : '';
+  const yt = document.getElementById('yrs-txt'); if (yt) yt.textContent = `${state.y0} \u2013 ${state.y1}`;
   $<HTMLSelectElement>('y0').value = String(state.y0); $<HTMLSelectElement>('y1').value = String(state.y1);
   $<HTMLSelectElement>('cmp-region').value = cmp && cmp.kind === 'region' ? cmp.id : '';
   [...$('cal-modes').children].forEach((b) => b.setAttribute('aria-pressed', String((b as HTMLElement).dataset.mode === state.mode)));
   if (state.aoi.kind === 'circle') { $<HTMLInputElement>('c-lat').value = String(state.aoi.lat); $<HTMLInputElement>('c-lon').value = String(state.aoi.lon); $<HTMLInputElement>('c-r').value = String(state.aoi.r); }
 }
-function writeHash(): void {
-  try { history.replaceState(null, '', encodeHash({ aoi: state.aoi, y0: state.y0, y1: state.y1, mode: state.mode }) + (cmp ? '&' + encodeCmp(cmp) : '') + (bm !== 'mono' ? `&bm=${bm}` : '')); } catch { /* sandboxed */ }
+const stateKey = (): string => encodeHash({ aoi: state.aoi, y0: state.y0, y1: state.y1, mode: state.mode }) + (cmp ? '&' + encodeCmp(cmp) : '') + (bm !== 'mono' ? `&bm=${bm}` : '');
+function writeHash(push = false): void {
+  try { history[push ? 'pushState' : 'replaceState'](null, '', `${stateKey()}&v=${view}`); } catch { /* sandboxed */ }
 }
 function applyHash(): void {
   const h = parseHash(location.hash);
@@ -488,7 +506,36 @@ function applyHash(): void {
   const c = parseCmp(location.hash);
   cmp = c && !(c.kind === 'region' && !regions.some((r) => r.id === (c as { id: string }).id)) ? c : null;
 }
+function miniToast(t: string): void {
+  const d = el('div', 'mini-toast', t); d.setAttribute('role', 'status'); document.body.append(d); setTimeout(() => d.remove(), 2000);
+}
+function openYearsSheet(anchor: HTMLElement): void {
+  const body = el('div', 'yrs-sheet');
+  const mkSel = (label: string, key: 'y0' | 'y1'): HTMLElement => {
+    const l = el('label', 'fld'); l.append(el('span', undefined, label)); const sel = el('select') as HTMLSelectElement;
+    for (let y = 2000; y <= lastYear; y++) { const o = el('option', undefined, String(y)) as HTMLOptionElement; o.value = String(y); sel.append(o); }
+    sel.value = String(state[key]);
+    sel.addEventListener('change', () => { const real = $<HTMLSelectElement>(key); real.value = sel.value; real.dispatchEvent(new Event('change')); (body.querySelectorAll('select') as NodeListOf<HTMLSelectElement>)[0].value = String(state.y0); (body.querySelectorAll('select') as NodeListOf<HTMLSelectElement>)[1].value = String(state.y1); });
+    l.append(sel); return l;
+  };
+  const row = el('div', 'yrs-row'); row.append(mkSel('From', 'y0'), mkSel('To', 'y1'));
+  const q = el('div', 'csel-quick');
+  let close = (): void => { /* set below */ };
+  for (const [k, t] of [['all', 'All years'], ['10', 'Last 10 years'], ['5', 'Last 5 years']] as const) {
+    const b = el('button', undefined, t) as HTMLButtonElement; b.type = 'button';
+    b.addEventListener('click', () => { document.dispatchEvent(new CustomEvent('fc-years', { detail: { kind: k } })); close(); });
+    q.append(b);
+  }
+  body.append(row, q);
+  close = openInfoSheet('Years', body, anchor);
+}
 function wireControls(): void {
+  $('yrs-btn').addEventListener('click', (e) => openYearsSheet(e.currentTarget as HTMLElement));
+  document.addEventListener('fc-years', (e) => {
+    const k = (e as CustomEvent<{ kind: string }>).detail.kind;
+    state.y1 = lastYear; state.y0 = k === 'all' ? 2000 : Math.max(2000, lastYear - (k === '10' ? 10 : 5) + 1);
+    state.frameT = null; syncControls(); void refresh(false);
+  });
   const cs = $<HTMLSelectElement>('cmp-region');
   const off = el('option', undefined, 'Off') as HTMLOptionElement; off.value = ''; cs.append(off);
   regions.forEach((r) => { const o = el('option', undefined, r.name) as HTMLOptionElement; o.value = r.id; cs.append(o); });
@@ -504,7 +551,7 @@ function wireControls(): void {
     for (let y = 2000; y <= lastYear; y++) { const o = el('option', undefined, String(y)) as HTMLOptionElement; o.value = String(y); s.append(o); }
     s.addEventListener('change', () => {
       state.y0 = +$<HTMLSelectElement>('y0').value; state.y1 = +$<HTMLSelectElement>('y1').value;
-      if (state.y0 > state.y1) { if (id === 'y0') state.y1 = state.y0; else state.y0 = state.y1; }
+      if (state.y0 > state.y1) { [state.y0, state.y1] = [state.y1, state.y0]; miniToast('Swapped years so the range runs forward'); }
       state.frameT = null; void refresh(false);
     });
   }
@@ -548,7 +595,10 @@ function wireControls(): void {
   $('dl-brief').addEventListener('click', briefing);
   $('proof-why').addEventListener('click', (e) => { e.preventDefault(); $('before-after').scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth' }); });
   $('why-link').addEventListener('click', (e) => { e.preventDefault(); const d = $<HTMLDetailsElement>('method'); d.open = true; void ensureExplainer(); $('why').scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth' }); });
-  window.addEventListener('hashchange', () => { applyHash(); state.frameT = null; void refresh(); });
+  window.addEventListener('hashchange', () => {
+    const v = parseView(location.hash) ?? 'overview'; if (v !== view) setView(v, { write: false });
+    applyHash(); const k = stateKey(); if (k === lastKey) return; lastKey = k; state.frameT = null; void refresh();
+  });
 }
 const draft: Pt[] = [];
 function startDraw(): void {
@@ -585,7 +635,7 @@ async function copyLink(): Promise<void> {
     const ta = document.createElement('textarea'); ta.value = url; ta.style.position = 'fixed'; ta.style.opacity = '0'; document.body.append(ta); ta.select();
     try { ok = document.execCommand('copy'); } catch { ok = false; } ta.remove();
   }
-  b.textContent = ok ? 'Link copied' : 'Copy failed: use the address bar'; setTimeout(() => { b.textContent = 'Copy link'; }, 2200);
+  b.textContent = ok ? 'Link copied' : 'Copy failed: use the address bar'; setTimeout(() => { b.textContent = 'Share'; }, 2200);
 }
 function setExp(t: string): void { $('exp-msg').textContent = t; }
 async function exportPoints(): Promise<void> {
@@ -660,9 +710,14 @@ function renderMethod(): void {
 
 /* ---------- boot ---------- */
 function ensureVisuals(): Promise<void> {
-  visuals ??= (async () => {
-    const [c, m, r] = await Promise.all([import('./charts'), import('./map'), import('./replay')]);
-    C = c;
+  visuals ??= (async () => { C = await import('./charts'); })();
+  return visuals;
+}
+let mapReady: Promise<void> | null = null;
+/** MapLibre is created the first time the Map section is shown; Overview never needs it. */
+function ensureMap(): Promise<void> {
+  mapReady ??= (async () => {
+    const [, m, r] = await Promise.all([ensureVisuals(), import('./map'), import('./replay')]);
     const desktop = window.innerWidth > 768;
     fireMap = new m.FireMap($('map'), prefersDark(), desktop);
     const tg = $('dim-toggle'); tg.setAttribute('aria-pressed', String(desktop)); tg.textContent = desktop ? '3D' : '2D';
@@ -676,8 +731,11 @@ function ensureVisuals(): Promise<void> {
     fireMap.onDrift = (d) => { document.querySelectorAll('[data-reset]').forEach((x) => x.classList.toggle('drifted', d)); };
     fireMap.onDrawClick = (p) => { if (draft.length >= MAX_VERTS) { msg(`At most ${MAX_VERTS} points.`); return; } draft.push(p); fireMap!.setDraft(draft); ($('draw-finish') as HTMLButtonElement).disabled = draft.length < 3; };
     fireMap.onDrawFinish = () => { if (draft.length > 3) draft.pop(); finishDraw(); };
-  })();
-  return visuals;
+    await new Promise<void>((r) => requestAnimationFrame(() => r()));
+    fireMap.map.resize(); fitPending = false;
+    if (series && aoiCells.length) { replay.setData(series.harm, meta.t_first, meta.t_last, theme()); drawShape(); fitMap(); await setMapHexes(); setMapMode(mapMode); renderMap(); }
+  })().catch((e) => { mapReady = null; throw e; });
+  return mapReady;
 }
 let explainerRender: (() => void) | null = null;
 async function ensureExplainer(): Promise<void> {
@@ -685,18 +743,134 @@ async function ensureExplainer(): Promise<void> {
   const x = await import('./explainer');
   explainerRender = x.mountExplainer($('why'), theme);
 }
+/* ---------- overview dashboard ---------- */
+const regionSeries = new Map<string, Series>();
+function seriesOfRegion(r: Region): Series { let x = regionSeries.get(r.id); if (!x) { x = seriesFromRegion(r, meta); regionSeries.set(r.id, x); } return x; }
+const last12 = (a: ArrayLike<number>): number[] => { const o: number[] = []; for (let t = meta.t_last - 11; t <= meta.t_last; t++) o.push(Number.isFinite(a[t]) ? a[t] : NaN); return o; };
+function dashKpis(): Kpi[] {
+  const sp = { tFirst: meta.t_first, tLast: meta.t_last }, harm = series!.harm, out: Kpi[] = [];
+  const a = state.aoi;
+  if (recent) {
+    const l7 = a.kind === 'region' ? last7(recent, a.id) : null;
+    if (l7) out.push({ key: 'l7', label: 'LAST 7 DAYS', value: fmt(l7.value), delta: deltaChip(l7.pct), deltaNote: 'vs median', sub: `normal for these days: ${fmt(l7.median)}`, spark: l7.harm.slice(-30) });
+    else if (a.kind !== 'region') out.push({ key: 'l7', label: 'LAST 7 DAYS', value: '\u2014', delta: null, sub: 'Last 7 days: region-level only', spark: null });
+  }
+  const tm = thisMonthStats(harm, state.y0, state.y1, sp, pdays(), partialHist());
+  if (tm) out.push({ key: 'tm', label: 'THIS MONTH', value: fmt(tm.value), delta: deltaChip(tm.pctVsMedian), deltaNote: 'vs median', sub: `${ordinal(tm.rank)} percentile \u00b7 ${MONTH_ABBR[tm.month - 1]}${tm.days < daysInMonth(tm.year, tm.month) ? ` so far (${tm.days} d)` : ''}`, spark: last12(harm) });
+  else out.push({ key: 'tm', label: 'THIS MONTH', value: '\u2014', delta: null, sub: 'not enough history', spark: null });
+  const yt = ytdStats(harm, sp, state.y0, state.y1);
+  out.push(yt ? { key: 'ytd', label: 'YEAR TO DATE', value: fmt(yt.value), delta: deltaChip(yt.pct), deltaNote: 'vs median', sub: `Jan\u2013${MONTH_ABBR[yt.months - 1]} \u00b7 median ${fmt(yt.median)}`, spark: last12(harm) } : { key: 'ytd', label: 'YEAR TO DATE', value: '\u2014', delta: null, sub: 'not enough history', spark: null });
+  const cl = climatology(harm, state.y0, state.y1, sp), now = nowDate();
+  const ss = seasonStatus(detectSeason(cl.median), now.getUTCMonth() + 1, now.getUTCDate(), now.getUTCFullYear());
+  out.push(ss ? { key: 'season', label: 'SEASON STATUS', value: ss.label, delta: null, sub: ss.sub, spark: cl.median.map((v) => (Number.isFinite(v) ? v : NaN)) } : { key: 'season', label: 'SEASON STATUS', value: '\u2014', delta: null, sub: 'no clear season', spark: null });
+  let ac: { value: number; median: number; pct: number } | null = null, acv = '\u2026';
+  if (index) {
+    const mask = new Uint8Array(cellIds.length); for (const c of aoiCells) mask[c] = 1;
+    ac = partial && partial.t_month === meta.t_last ? activeCells(index.m, mask, meta.t_last, partial) : null;
+    if (ac) acv = fmt(ac.value); else { let n = 0; const m = index.m; for (let r = 0; r < m.c.length; r++) if (m.t[r] === meta.t_last && mask[m.c[r]] && m.harm[r] > 0) n++; acv = fmt(n); }
+  }
+  out.push({ key: 'cells', label: 'ACTIVE CELLS', value: acv, delta: ac ? deltaChip(ac.pct) : null, deltaNote: 'vs median', sub: ac ? `H3 cells with detections \u00b7 median ${fmt(ac.median)}` : 'H3 cells with detections this month', spark: null });
+  return out;
+}
+function dashRows(): CountryRow[] {
+  const sp = { tFirst: meta.t_first, tLast: meta.t_last };
+  const mk = (id: string, name: string, s: Series, hist: { t: number[]; v: number[] } | null): CountryRow => {
+    const tm = thisMonthStats(s.harm, state.y0, state.y1, sp, pdays(), hist), yt = ytdStats(s.harm, sp, state.y0, state.y1);
+    return { id, name, value: tm?.value ?? NaN, pct: tm?.pctVsMedian ?? NaN, ytd: yt?.pct ?? NaN, trend: last12(s.harm), rank: tm?.rank ?? NaN, status: tm ? statusOf(tm.rank) : null };
+  };
+  if (state.aoi.kind === 'region' && state.aoi.id === 'central-asia') return regions.filter((r) => r.id !== 'central-asia').map((r) => mk(r.id, r.name, seriesOfRegion(r), regionHist(partial, meta.t_last, r.id)));
+  return [mk('', 'This area', series!, partialHist())];
+}
+let dashBuilt = false;
+function renderDash(): void {
+  if (!series) return;
+  if (!dashBuilt) { buildDash($('dash')); $('d-proof').append($('proof-block')); dashBuilt = true; }
+  const m: DashModel = { meta, areaName: aoiName, dataThrough: meta.data_through ?? meta.generated_at.slice(0, 10), kpis: dashKpis(), rows: dashRows(), tableTitle: state.aoi.kind === 'region' && state.aoi.id === 'central-asia' ? 'Countries' : 'This area', activeId: state.aoi.kind === 'region' ? state.aoi.id : null, sensors: sensorStatus(meta.sensors, meta.data_through ?? meta.generated_at.slice(0, 10)) };
+  $('d-sub').textContent = `${aoiName}: latest activity and how it compares with normal.`;
+  renderStatus(m); renderKpis(m);
+  renderTable(m, { openView: (v) => setView(v as View, { push: true }), setArea: (id) => { cancelDraw(); state.aoi = { kind: 'region', id }; state.frameT = null; void refresh(); } });
+  renderMinis();
+}
+let ringCache = new Map<number, [number, number][]>(), outlineCache: [number, number][][] | null = null;
+function renderMinis(): void {
+  if (!anom || !anom.pct) return;
+  const cells: MiniCell[] = [];
+  for (const c of aoiCells) {
+    if (!Number.isFinite(anom.pct[c])) continue;
+    let ring = ringCache.get(c); if (!ring) { ring = cellToBoundary(cellIds[c]).map(([la, lo]) => [lo, la] as [number, number]); ringCache.set(c, ring); }
+    cells.push({ lon: lon[c], lat: lat[c], pct: anom.pct[c], ring });
+  }
+  const bounds = aoiCells.map((c) => ({ lon: lon[c], lat: lat[c], pct: NaN, ring: [] as [number, number][] }));
+  const all = cells.length ? cells : bounds;
+  outlineCache ??= countries.features.flatMap((f) => geometryPolys(f.geometry as { type: string; coordinates: unknown }).map((p) => p[0] as [number, number][]));
+  const dm = document.getElementById('dash-minimap');
+  if (dm) renderMiniMap(dm, all, outlineCache, () => setView('anomalies', { push: true }), document.getElementById('dash-mm-note'));
+  const am = document.getElementById('anom-minimap'); const al = document.getElementById('anom-leg'); if (al && !al.firstChild) fillLegend(al);
+  if (am) renderMiniMap(am, all, outlineCache, () => { setView('map', { push: true }); void ensureMap().then(() => setMapMode('anomaly')); }, document.getElementById('anom-mm-note'));
+}
+function renderLast24(): void {
+  const harm = series!.harm, sp = { tFirst: meta.t_first, tLast: meta.t_last };
+  const yb = Math.max(state.y0, Math.min(state.y1, yearOf(meta.t_last) - 1));
+  chart('last24', 'dash-chart').setOption(C!.last24Option(harm, climatology(harm, state.y0, yb, sp), meta.t_last, meta.t_nrt_from, pdays(), theme()), true);
+  $('dash-chart').setAttribute('aria-label', `Line chart of the last 24 months of harmonized detections against the P10 to P90 range of earlier years. Latest month ${fmt(harm[meta.t_last])}.`);
+}
 function trackHeader(): void {
-  const top = $('top'), set = () => document.documentElement.style.setProperty('--hdr', `${Math.ceil(top.getBoundingClientRect().height)}px`);
+  const top = $('top'), set = () => document.documentElement.style.setProperty('--topbar-h', `${Math.ceil(top.getBoundingClientRect().height)}px`);
   set(); new ResizeObserver(set).observe(top);
-  const fit = () => { const h = top.getBoundingClientRect().height; document.documentElement.style.setProperty('--maph', `${Math.round(window.innerHeight - Math.max(0, h - window.scrollY))}px`); };
-  fit(); addEventListener('scroll', fit, { passive: true }); addEventListener('resize', fit);
+  const sent = el('div'); sent.id = 'top-sentinel'; sent.setAttribute('aria-hidden', 'true'); document.body.prepend(sent);
+  new IntersectionObserver((e) => top.classList.toggle('scrolled', !e[0].isIntersecting)).observe(sent);
+  document.addEventListener('visibilitychange', () => document.documentElement.classList.toggle('tab-hidden', document.hidden));
 }
 
-function renderHeroText(): void {
-  const end = /^(\d{4})-(\d{2})-(\d{2})$/.exec(meta.sensors.snpp.end), yrs = yearOf(meta.t_last) - yearOf(meta.t_first);
-  const when = end ? `${+end[3]} ${MONTH_ABBR[+end[2] - 1]} ${end[1]}` : meta.sensors.snpp.end;
-  document.querySelector('.context')!.textContent = `MODIS is retiring. Suomi NPP went dark on ${when}. FireChronicle keeps ${yrs} years of satellite fire records on one scale.`;
+/* ---------- sections (hash route v=) ---------- */
+type View = 'overview' | 'map' | 'calendar' | 'outlook' | 'anomalies' | 'compare' | 'data';
+const VIEWS: View[] = ['overview', 'map', 'calendar', 'outlook', 'anomalies', 'compare', 'data'];
+let view: View = 'overview';
+const parseView = (h: string): View | null => { const m = /[#&]v=([a-z]+)/.exec(h); return m && (VIEWS as string[]).includes(m[1]) ? (m[1] as View) : null; };
+function setView(v: View, o: { write?: boolean; push?: boolean } = {}): void {
+  const changed = v !== view; view = v;
+  document.documentElement.dataset.view = v;
+  document.querySelectorAll<HTMLElement>('.view').forEach((s) => s.classList.toggle('on', s.dataset.view === v));
+  const main = ['overview', 'map', 'calendar', 'outlook'].includes(v);
+  document.querySelectorAll<HTMLElement>('.nav-item, .tab-item').forEach((a) => { if (a.dataset.view === v || (!main && a.id === 'tab-more')) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current'); });
+  if (v === 'map' && fireMap) {
+    const fm = fireMap;
+    requestAnimationFrame(() => { fm.map.resize(); if (fitPending) { fitPending = false; fitMap(); } void setMapHexes(); drawShape(); renderMap(); });
+  }
+  if (v === 'map') void ensureMap().catch((e) => setStatus(`Could not load the map (${(e as Error).message}).`, () => void ensureMap()));
+  if (changed) window.scrollTo(0, 0);
+  if (o.write !== false) writeHash(o.push);
+  window.dispatchEvent(new Event('fc-viewchange'));
 }
+function wireShell(): void {
+  const root = document.documentElement;
+  try { root.dataset.side = localStorage.getItem('fc-side') === 'rail' ? 'rail' : 'full'; } catch { root.dataset.side = 'full'; }
+  const tg = $('side-toggle');
+  const sync = (): void => { const r = root.dataset.side === 'rail'; tg.setAttribute('aria-pressed', String(r)); tg.setAttribute('aria-label', r ? 'Expand the sidebar' : 'Collapse the sidebar'); };
+  sync();
+  tg.addEventListener('click', () => { root.dataset.side = root.dataset.side === 'rail' ? 'full' : 'rail'; try { localStorage.setItem('fc-side', root.dataset.side); } catch { /* private mode */ } sync(); });
+  document.addEventListener('click', (e) => {
+    const a = (e.target as HTMLElement).closest<HTMLAnchorElement>('a[data-view], a.brand-link');
+    if (!a || e.defaultPrevented || e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
+    const v = (a.dataset.view as View | undefined) ?? 'overview';
+    e.preventDefault(); setView(v, { push: true });
+    if (a.classList.contains('brand-link')) window.scrollTo({ top: 0, behavior: reduceMotion ? 'auto' : 'smooth' });
+  });
+  const more = $('tab-more');
+  more.addEventListener('click', () => {
+    const list = el('div', 'mm-list');
+    let close = (): void => { /* set below */ };
+    for (const n of document.querySelectorAll<HTMLAnchorElement>('.nav-item')) {
+      const v = n.dataset.view as View; if (['overview', 'map', 'calendar', 'outlook'].includes(v)) continue;
+      const a = el('a') as HTMLAnchorElement; a.href = `#v=${v}`; a.dataset.view = v; a.append(n.querySelector('svg')!.cloneNode(true), el('span', undefined, n.title));
+      a.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); close(); setView(v, { push: true }); });
+      list.append(a);
+    }
+    close = openInfoSheet('More', list, more);
+  });
+  window.addEventListener('fc-view', (e) => { const d = (e as CustomEvent<{ view?: View; push?: boolean }>).detail; if (d?.view && VIEWS.includes(d.view)) setView(d.view, { push: d.push !== false }); });
+}
+
 function buildHud(): HudData {
   const sp = { tFirst: meta.t_first, tLast: meta.t_last };
   const tm = series ? thisMonthStats(series.harm, state.y0, state.y1, sp, pdays(), partialHist()) : null;
@@ -724,7 +898,7 @@ function fsApi(): FsApi {
   };
 }
 async function toggleFs(): Promise<void> {
-  try { await ensureVisuals(); const m = await import('./fullscreen'); await m.toggleFullscreen(fsApi()); } catch (e) { setStatus(`Could not open fullscreen (${(e as Error).message}).`); }
+  try { if (view !== 'map') setView('map', { push: true }); await ensureMap(); const m = await import('./fullscreen'); await m.toggleFullscreen(fsApi()); } catch (e) { setStatus(`Could not open fullscreen (${(e as Error).message}).`); }
 }
 const hudPing = (): void => { window.dispatchEvent(new Event('fc-hud')); };
 const bmKey = (): string => `${state.frameT ?? 'p'}|${mapMode}`;
@@ -806,10 +980,10 @@ async function copyText(t: string, btn: HTMLElement, ok: string, label: string):
   }
   btn.textContent = done ? ok : 'Copy failed'; setTimeout(() => { btn.textContent = label; }, 2200);
 }
-const THEME_UI: Record<ThemeMode, [string, string]> = { system: ['\u25d0', 'system'], light: ['\u2600', 'light'], dark: ['\u263e', 'dark'] };
+const THEME_UI: Record<ThemeMode, string> = { system: 'System', light: 'Light', dark: 'Dark' };
 function wireExtras(): void {
   document.querySelectorAll<HTMLElement>('#maplayers button').forEach((b) => b.addEventListener('click', () => setMapMode(b.dataset.layer as 'activity' | 'anomaly')));
-  const tb = $('theme-btn'), showTheme = () => { const [ic, name] = THEME_UI[themeMode()]; tb.textContent = ic; tb.setAttribute('aria-label', `Theme: ${name}. Click to change.`); tb.title = `Theme: ${name}`; };
+  const tb = $('theme-btn'), showTheme = () => { const name = THEME_UI[themeMode()]; $('theme-val').textContent = name; tb.setAttribute('aria-label', `Theme: ${name}. Click to change.`); tb.title = `Theme: ${name}`; };
   showTheme();
   tb.addEventListener('click', () => { const order: ThemeMode[] = ['system', 'light', 'dark']; applyThemeMode(order[(order.indexOf(themeMode()) + 1) % 3]); showTheme(); });
   const tour = (): void => { void import('./tour').then((m) => m.startTour()); };
@@ -820,19 +994,20 @@ function wireExtras(): void {
   $('dl-dataset').addEventListener('click', () => void import('./export').then((x) => { x.download(new Blob([x.regionsCsv(regions, meta, seriesFromRegion)], { type: 'text/csv;charset=utf-8' }), 'firechronicle-harmonized-regions.csv'); setExp('Harmonized monthly series for all regions downloaded.'); }));
   const raw = $('raw-links'); raw.textContent = 'Raw files: ';
   ['meta.json', 'regions.json', 'cells.json', 'monthly.json', 'countries.geojson'].forEach((f, i) => { if (i) raw.append(' \u00b7 '); const a = el('a', undefined, f) as HTMLAnchorElement; a.href = `./data/${f}`; a.target = '_blank'; a.rel = 'noopener'; raw.append(a); });
-  // phones: ? / GitHub / theme / cite live in the overflow menu
+  // phones: GitHub / tour / theme / cite / Ember live in the overflow menu
   {
     const acts = document.querySelector('.hdr-actions')!, pop = $('more-pop'), more = $('more-btn');
+    $('ask-menu-ic').append(createEmber(18, true).el);
     const items = ['ask-menu', 'gh-btn', 'tour-btn', 'theme-btn', 'cite-menu'].map((id) => $(id));
     const place = (phone: boolean): void => { for (const it of items) { if (phone) { pop.append(it); it.classList.add('in-menu'); } else { acts.insertBefore(it, more); it.classList.remove('in-menu'); } } if (!phone) closeMenu(); };
     const closeMenu = (): void => { pop.hidden = true; more.setAttribute('aria-expanded', 'false'); };
     more.addEventListener('click', () => { pop.hidden = !pop.hidden; more.setAttribute('aria-expanded', String(!pop.hidden)); if (!pop.hidden) (pop.querySelector('a, button') as HTMLElement | null)?.focus(); });
     document.addEventListener('click', (e) => { if (!pop.hidden && !pop.contains(e.target as Node) && !more.contains(e.target as Node)) closeMenu(); });
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !pop.hidden) { closeMenu(); more.focus(); } });
-    pop.addEventListener('click', (e) => { if ((e.target as HTMLElement).closest('button, a')) setTimeout(closeMenu, 0); });
+    pop.addEventListener('click', (e) => { const t = (e.target as HTMLElement).closest('button, a'); if (t && t.id !== 'theme-btn') setTimeout(closeMenu, 0); });
     const mq = matchMedia('(max-width: 640px)'); place(mq.matches); mq.addEventListener('change', () => place(mq.matches));
     $('ask-menu').addEventListener('click', () => $('ask-btn').click());
-    $('cite-menu').addEventListener('click', (e) => void copyText(CITATION, e.currentTarget as HTMLElement, '\u2713', '\u275e'));
+    $('cite-menu').addEventListener('click', (e) => void copyText(CITATION, (e.currentTarget as HTMLElement).querySelector('.mi-lbl') as HTMLElement, 'Copied', 'Cite'));
   }
   addEventListener('keydown', (e) => {
     if (e.ctrlKey || e.metaKey || e.altKey) return;
@@ -847,32 +1022,31 @@ function wireExtras(): void {
   });
   void import('./glossary').then((g) => {
     const q = (s: string) => document.querySelector(s);
-    g.addInfo(q('.context'), 'VIIRS', 'VIIRS'); g.addInfo(q('.context'), 'MODIS', 'MODIS');
     g.addInfo(q('.cal-hero .head h2'), 'MODIS-equivalent', 'MODIS-equivalent'); g.addInfo(q('.cal-hero .head h2'), 'hotspot', 'hotspot');
-    g.addInfo(q('#h-month'), 'percentile'); g.addInfo(q('#h-anom'), 'robust z'); g.addInfo(q('#h-ba'), 'harmonized'); g.addInfo(q('#h-unusual'), 'H3 cell'); g.addInfo(q('#badge-nrt'), 'NRT');
+    g.addInfo(q('#h-month'), 'percentile'); g.addInfo(q('#h-anom'), 'robust z'); g.addInfo(q('#h-ba'), 'harmonized'); g.addInfo(q('#h-unusual'), 'H3 cell');
   });
 }
 async function boot(): Promise<void> {
   applyThemeMode(themeMode(), false);
   if (import.meta.env.DEV && new URLSearchParams(location.search).has('ember-demo')) { void import('./ui/emberDemo').then((m) => m.showEmberDemo()); }
   enhanceAll();
-  trackHeader();
+  trackHeader(); wireShell();
   setStatus('Loading data\u2026');
   try {
     let cd: { cells: string[]; country: string[] | null };
     [meta, regions, countries, cd] = await Promise.all([loadMeta(), loadRegions(), loadCountries(), loadCells()]);
     cellIds = cd.cells; cellCountry = cd.country;
   } catch (e) { setStatus(`Could not load the data files (${(e as Error).message}).`, () => void boot()); return; }
-  partial = await loadPartial();
+  [partial, recent] = await Promise.all([loadPartial(), loadRecent()]);
   setStatus('');
   lastYear = yearOf(meta.t_last);
   state.y1 = lastYear;
   lat = new Float64Array(cellIds.length); lon = new Float64Array(cellIds.length);
   cellIds.forEach((id, i) => { const [a, b] = cellToLatLng(id); lat[i] = a; lon[i] = b; });
   $('badge-sample').hidden = !meta.sample;
-  initFreshness(meta); $('badge-nrt').hidden = false;
-  renderHeroText(); renderInsights(); renderProof();
-  wireControls(); wireExtras(); renderMethod();
+  initFreshness(meta);
+  renderInsights(); renderProof();
+  wireControls(); wireExtras(); renderMethod(); initMapDrawer(() => (series ? buildHud() : null));
   initAssistant({
     areaName: () => aoiName, facts: assistantFacts, apply: assistantApply,
     areaId: () => ({ kind: state.aoi.kind, id: state.aoi.kind === 'region' ? state.aoi.id : undefined }),
@@ -885,11 +1059,12 @@ async function boot(): Promise<void> {
       return r ? { harm: seriesFromRegion(r, meta).harm, sp, y0: 2000, y1: lastYear } : null;
     },
     validation: () => meta.validation,
-    openCalendar: (iso) => { assistantApply({ area: iso }); setTimeout(() => $('h-cal').scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'start' }), 500); },
+    openCalendar: (iso) => { assistantApply({ area: iso }); setView('calendar', { push: true }); },
     shareCard: async (iso) => { state.aoi = { kind: 'region', id: iso }; state.frameT = null; await refresh(); briefingSi = true; try { await briefing(); } finally { briefingSi = false; } },
   });
   $<HTMLDetailsElement>('method').addEventListener('toggle', () => { if ($<HTMLDetailsElement>('method').open) void ensureExplainer(); });
-  applyHash(); syncControls();
+  applyHash(); lastKey = stateKey(); syncControls();
+  setView(parseView(location.hash) ?? 'overview', { write: false });
   void ensureVisuals().catch((e) => setStatus(`Could not load the map and charts (${(e as Error).message}).`, () => { visuals = null; void refresh(); }));
   onThemeChange(() => { fireMap?.setDark(prefersDark()); explainerRender?.(); if (series && C) { renderCharts(); renderMap(); } });
   await refresh();

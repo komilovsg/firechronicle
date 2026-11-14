@@ -88,13 +88,15 @@ export function initFreshness(meta: Meta): void {
     const label = q('fr-cd-label'), cd = q('fr-cd');
     cd.hidden = f.state === 'ended';
     if (updating) { digits.hidden = true; label.textContent = 'Updating… (GitHub schedules can run up to ~1 h late)'; }
-    else if (cdText !== null) { digits.hidden = false; label.textContent = 'Next update in'; setDigits(cdText); }
+    else if (cdText !== null) { digits.hidden = false; label.textContent = 'Next update'; setDigits(cdText); }
     else { digits.hidden = true; label.textContent = `Next attempt ${refresh.schedule_utc} UTC`; }
-    q('fr-main').textContent = f.state === 'fresh' ? 'Updated daily from NASA FIRMS' : f.state === 'stale' ? 'Data may be delayed' : 'Updates ended';
+    const fm = q('fr-main'), l1 = f.state === 'fresh' ? 'Updated daily' : f.state === 'stale' ? 'Data may be delayed' : 'Updates ended';
+    fm.textContent = ''; const s1 = document.createElement('span'); s1.className = 'fr-l1'; s1.textContent = l1; fm.append(s1);
+    if (f.state === 'fresh') { const s2 = document.createElement('span'); s2.className = 'fr-l2'; s2.textContent = 'from NASA FIRMS'; fm.append(s2); }
     const ago = f.daysOld === null ? '' : f.daysOld <= 0 ? 'today' : f.daysOld === 1 ? 'yesterday' : `${f.daysOld} d ago`;
     q('fr-short').textContent = f.state === 'ended' ? 'Updates ended' : `${f.state === 'fresh' ? `Updated ${ago || 'recently'}` : 'Data delayed'} \u00b7 ${f.state === 'fresh' && !updating ? `next in ${shortT}` : shortT}`;
     const t = f.state === 'fresh' ? target : nextRun(now, refresh.schedule_utc);
-    pill.title = `Next update: ${t.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })} (your time) · ${t.toISOString().slice(0, 16).replace('T', ' ')} UTC`;
+    pill.title = `${f.state === 'fresh' ? 'Updated daily from NASA FIRMS' : l1} \u00b7 next in ${shortT} \u00b7 Next update: ${t.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })} (your time) · ${t.toISOString().slice(0, 16).replace('T', ' ')} UTC`;
     for (const cb of subs) cb({ state: f.state, updating, countdown: cdText, short: shortT });
   };
   tick(); setInterval(tick, 1000);
@@ -108,7 +110,7 @@ export function initFreshness(meta: Meta): void {
     pop = document.createElement('div'); pop.className = 'gloss-pop fresh-pop'; pop.setAttribute('role', 'dialog'); pop.setAttribute('aria-label', 'Data freshness');
     pop.append(info(refresh)); mountPortal(pop);
     const r = pill.getBoundingClientRect(), w = Math.min(340, innerWidth - 16); pop.style.width = `${w}px`;
-    pop.style.left = `${Math.max(8, Math.min(innerWidth - w - 8, r.left))}px`; pop.style.top = `${r.bottom + 8}px`;
+    pop.style.left = `${Math.max(8, Math.min(innerWidth - w - 8, r.left))}px`; const ph = pop.offsetHeight; pop.style.top = `${r.bottom + 8 + ph > innerHeight - 8 ? Math.max(8, r.top - 8 - ph) : r.bottom + 8}px`;
     pill.setAttribute('aria-expanded', 'true');
   });
   document.addEventListener('click', (e) => { if (pop && !pop.contains(e.target as Node) && !pill.contains(e.target as Node)) closePop(); });

@@ -36,33 +36,45 @@
 <body>
 <a class="skip" href="#panel">Skip to analytics</a>
 <header class="top" id="top">
-  <div class="hdr">
-    <div class="hdr-brand">
-      <svg class="mark" viewBox="0 0 40 40" width="38" height="38" aria-hidden="true" focusable="false">
-        <circle cx="20" cy="20" r="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-dasharray="70 31" stroke-linecap="round" transform="rotate(-30 20 20)"/>
-        <circle cx="20" cy="20" r="9.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-dasharray="36 24" stroke-linecap="round" transform="rotate(120 20 20)" opacity=".6"/>
-        <circle cx="32.2" cy="11.4" r="3.6" fill="var(--ember)"/>
-      </svg>
-      <div class="hdr-title">
-        <h1 class="name">FireChronicle</h1>
-        <p class="tag">One fire history, before and after MODIS</p>
-        <p class="credit">by Deep Space AI &middot; Dushanbe, Tajikistan &middot; NASA Space Apps 2026</p>
-      </div>
+  <div class="tb">
+    <h1 class="tb-brand"><a class="brand-link" id="brand" href="#v=overview" aria-label="FireChronicle — home"><svg class="mark" viewBox="0 0 40 40" width="30" height="30" aria-hidden="true" focusable="false">
+      <circle cx="20" cy="20" r="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-dasharray="70 31" stroke-linecap="round" transform="rotate(-30 20 20)"/>
+      <circle cx="20" cy="20" r="9.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-dasharray="36 24" stroke-linecap="round" transform="rotate(120 20 20)" opacity=".6"/>
+      <g class="orbit"><circle class="glow" cx="32.2" cy="11.4" r="5.5" fill="var(--ember)" opacity=".28"/><circle cx="32.2" cy="11.4" r="3.6" fill="var(--ember)"/></g></svg><span class="name">FireChronicle</span></a></h1>
+    <span id="badge-sample" class="badge warn" hidden>Sample data</span>
+    <div class="tb-ctrl">
+      <label class="fld tb-area"><span>Area</span><select id="aoi-region" data-prefix="Area"></select></label>
+      <div class="fld tb-years" role="group" aria-label="Years"><span class="lab" aria-hidden="true">Years</span>
+        <button type="button" class="yrs-btn" id="yrs-btn" aria-haspopup="dialog" aria-label="Years"><span id="yrs-txt"></span></button>
+        <div class="yr-range"><select id="y0" aria-label="Start year" data-prefix="From" data-quick="years"></select><span class="dash" aria-hidden="true">&ndash;</span><select id="y1" aria-label="End year" data-prefix="To" data-quick="years"></select></div></div>
     </div>
     <div class="hdr-actions">
-      
-      <a id="gh-btn" class="iconbtn" href="https://github.com/komilovsg/firechronicle" target="_blank" rel="noopener noreferrer" aria-label="Source code on GitHub" title="Source code on GitHub"><svg viewBox="0 0 16 16" width="18" height="18" aria-hidden="true" focusable="false" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.6 7.6 0 0 1 4 0c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg></a>
-      <button type="button" id="tour-btn" class="iconbtn" aria-label="Open guided tour" title="Guided tour (?)">?</button>
-      <button type="button" id="theme-btn" class="iconbtn" aria-label="Theme: system" title="Theme: system">&#9680;</button>
-      <button type="button" id="ask-menu" class="iconbtn menu-only" aria-label="Ask Ember" title="Ask Ember">&#10022;</button>
-      <button type="button" id="cite-menu" class="iconbtn menu-only" aria-label="Cite" title="Copy citation">&#10078;</button>
-      <button type="button" id="more-btn" class="iconbtn" aria-label="More" aria-haspopup="menu" aria-expanded="false" title="More">&#8943;</button>
+      <button type="button" id="copy-link" class="btn ghost small share" title="Copy a link to this view">Share</button>
+      <a id="gh-btn" class="iconbtn mi" href="https://github.com/komilovsg/firechronicle" target="_blank" rel="noopener noreferrer" aria-label="Source code on GitHub" title="Source code on GitHub"><span class="mi-ic"><svg viewBox="0 0 16 16" width="18" height="18" aria-hidden="true" focusable="false" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.6 7.6 0 0 1 4 0c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg></span><span class="mi-lbl">GitHub</span></a>
+      <button type="button" id="tour-btn" class="iconbtn mi" aria-label="Open guided tour" title="Guided tour (?)"><span class="mi-ic"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="9"/><path d="M9.6 9.4a2.5 2.5 0 1 1 3.5 2.3c-.7.4-1.1.9-1.1 1.7M12 16.8v.1"/></svg></span><span class="mi-lbl">Guided tour</span></button>
+      <button type="button" id="theme-btn" class="iconbtn mi" aria-label="Theme: System" title="Theme: System"><span class="mi-ic"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="9"/><path d="M12 3v18a9 9 0 0 0 0-18z" fill="currentColor" stroke="none"/></svg></span><span class="mi-lbl">Theme</span><span class="mi-val" id="theme-val">System</span></button>
+      <button type="button" id="ask-menu" class="iconbtn mi menu-only" aria-label="Ask Ember" title="Ask Ember"><span class="mi-ic" id="ask-menu-ic"></span><span class="mi-lbl">Ask Ember</span></button>
+      <button type="button" id="cite-menu" class="iconbtn mi menu-only" aria-label="Cite" title="Copy citation"><span class="mi-ic"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M10 7H6.5A1.5 1.5 0 0 0 5 8.5V12a2 2 0 0 0 2 2h2.5M9.5 14c0 2-1 3.2-3 4M19 7h-3.5A1.5 1.5 0 0 0 14 8.5V12a2 2 0 0 0 2 2h2.5M18.5 14c0 2-1 3.2-3 4"/></svg></span><span class="mi-lbl">Cite</span></button>
+      <button type="button" id="more-btn" class="iconbtn" aria-label="More" aria-haspopup="menu" aria-expanded="false" title="More"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="5" cy="12" r="1" fill="currentColor"/><circle cx="12" cy="12" r="1" fill="currentColor"/><circle cx="19" cy="12" r="1" fill="currentColor"/></svg></button>
       <div class="more-pop" id="more-pop" role="menu" hidden></div>
     </div>
-    <div class="hdr-sub">
-      <div class="badges">
-        <span id="badge-sample" class="badge warn" hidden>Sample data</span>
-        <button type="button" id="fresh" class="fresh" aria-haspopup="dialog" aria-expanded="false" hidden>
+  </div>
+</header>
+<div id="fresh-banner" class="banner" role="status" hidden></div>
+<div id="status" class="status" role="status" aria-live="polite"></div>
+<div class="shell">
+  <nav class="side" id="side" aria-label="Sections">
+    <div class="nav-list">
+<a class="nav-item" href="#v=overview" data-view="overview" title="Overview"><svg class="ni" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3h7v9H3zM14 3h7v5h-7zM14 12h7v9h-7zM3 16h7v5H3z"/></svg><span class="nl">Overview</span></a>
+<a class="nav-item" href="#v=map" data-view="map" title="Map"><svg class="ni" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 4 3 6.5v13L9 17l6 3 6-2.5v-13L15 7zM9 4v13M15 7v13"/></svg><span class="nl">Map</span></a>
+<a class="nav-item" href="#v=calendar" data-view="calendar" title="Calendar"><svg class="ni" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h16v14H4zM4 10h16M8 3v4M16 3v4"/></svg><span class="nl">Calendar</span></a>
+<a class="nav-item" href="#v=outlook" data-view="outlook" title="Outlook"><svg class="ni" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8z"/></svg><span class="nl">Outlook</span></a>
+<a class="nav-item" href="#v=anomalies" data-view="anomalies" title="Anomalies"><svg class="ni" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg><span class="nl">Anomalies</span></a>
+<a class="nav-item" href="#v=compare" data-view="compare" title="Compare"><svg class="ni" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 4v16M12 8v12M19 12v8"/></svg><span class="nl">Compare</span></a>
+<a class="nav-item" href="#v=data" data-view="data" title="Data & Method"><svg class="ni" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4c4.4 0 8 1.1 8 2.5S16.4 9 12 9 4 7.9 4 6.5 7.6 4 12 4zM4 6.5v5C4 12.9 7.6 14 12 14s8-1.1 8-2.5v-5M4 11.5v5C4 17.9 7.6 19 12 19s8-1.1 8-2.5v-5"/></svg><span class="nl">Data &amp; Method</span></a>
+    </div>
+    <div class="side-foot">
+      <button type="button" id="fresh" class="fresh" aria-haspopup="dialog" aria-expanded="false" hidden>
           <span class="dot" aria-hidden="true"></span>
           <span class="fr-main" id="fr-main">Updated daily from NASA FIRMS</span>
           <span class="fr-detail" id="fr-upd"></span>
@@ -70,26 +82,21 @@
           <span class="fr-detail fr-cd" id="fr-cd"><span id="fr-cd-label">Next update in</span> <span class="digits" id="fr-digits"></span></span>
           <span class="fr-short" id="fr-short"></span>
         </button>
-        <span id="badge-nrt" class="badge" hidden>Latest month provisional (NRT)</span>
-      </div>
-      <p class="context">MODIS is retiring. Suomi NPP went dark on 2 Nov 2026. FireChronicle keeps 26 years of satellite fire records on one scale.</p>
+      <p class="side-credit" title="Deep Space AI"><span class="sc-full">Deep Space AI</span><span class="sc-mono" aria-hidden="true">DSI</span></p>
+      <button type="button" id="side-toggle" class="side-toggle" aria-label="Collapse the sidebar" aria-pressed="false"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m14 6-6 6 6 6"/></svg></button>
     </div>
-  </div>
-</header>
-<div id="fresh-banner" class="banner" role="status" hidden></div>
-<div id="status" class="status" role="status" aria-live="polite"></div>
-<div class="app">
-  <section class="mapcol" aria-label="Map and area of interest">
-    <div class="toolbar">
-      <div class="row">
-        <label class="fld grow"><span>Area</span><select id="aoi-region"></select></label>
-        <label class="fld"><span>From</span><select id="y0"></select></label>
-        <label class="fld"><span>To</span><select id="y1"></select></label>
-        <button type="button" id="copy-link" class="btn ghost">Copy link</button>
-      </div>
-      <div class="groups">
-      <label class="fld"><span>Compare with</span><select id="cmp-region"></select></label>
-      <div class="group">
+  </nav>
+  <main class="stage" id="panel" tabindex="-1">
+    <div id="dash-empty"></div>
+    <section class="view" id="v-overview" data-view="overview" aria-label="Overview">
+      <div class="dash" id="dash"></div>
+      <div class="sr"><p class="aoi-name" id="aoi-name"></p><div id="summary"></div></div>
+    </section>
+    <section class="view" id="v-map" data-view="map" aria-label="Map">
+      <div class="mapcol">
+        <div class="toolbar">
+          <div class="groups">
+          <div class="group">
         <span class="gl">Draw an area</span>
         <div class="row tight">
           <button type="button" id="draw-start" class="btn toggle" aria-pressed="false">Draw polygon</button>
@@ -101,16 +108,16 @@
       <form id="circle-form" class="group circle" novalidate>
         <span class="gl">Or a point and radius</span>
         <div class="row tight">
-          <label class="fld"><span>Lat</span><input id="c-lat" inputmode="decimal" autocomplete="off" placeholder="41.3"></label>
-          <label class="fld"><span>Lon</span><input id="c-lon" inputmode="decimal" autocomplete="off" placeholder="69.2"></label>
-          <label class="fld"><span>Radius km</span><input id="c-r" inputmode="decimal" autocomplete="off" placeholder="1–500"></label>
+          <label class="pfx"><span>Lat</span><input id="c-lat" aria-label="Latitude" inputmode="decimal" autocomplete="off" placeholder="41.3"></label>
+          <label class="pfx"><span>Lon</span><input id="c-lon" aria-label="Longitude" inputmode="decimal" autocomplete="off" placeholder="69.2"></label>
+          <label class="pfx"><span>Km</span><input id="c-r" aria-label="Radius in kilometres" inputmode="decimal" autocomplete="off" placeholder="1–500"></label>
           <button type="submit" class="btn">Use circle</button>
         </div>
       </form>
       </div>
-      <p id="aoi-msg" class="msg" role="alert"></p>
-    </div>
-    <div class="mapwrap">
+          <p id="aoi-msg" class="msg" role="alert"></p>
+        </div>
+        <div class="mapwrap">
       <div id="map" aria-label="Map of fire hotspot density by H3 cell"></div>
       <div class="maplegend" id="maplegend" aria-hidden="true"></div>
       <div class="maphint" id="maphint">Tip: choose a country or draw an area to start</div>
@@ -123,31 +130,11 @@
       <button type="button" id="dim-toggle" class="btn mapbtn" aria-pressed="true" aria-label="Toggle 3D view">3D</button>
     </div>
     <div class="replay" id="replay" aria-label="Time-lapse replay"></div>
-  </section>
-
-  <main class="panel" id="panel" tabindex="-1">
-    <section class="block proof" id="proof-block" aria-labelledby="h-proof">
-      <div class="proof-head"><h2 id="h-proof">Change in fire activity</h2><span class="proof-cap" id="proof-cap">Central Asia</span><a class="proof-why" href="#before-after" id="proof-why">Why? &rarr;</a></div>
-      <ul class="insights" id="insights" aria-label="Key figures for Central Asia"></ul>
-    </section>
-    <section class="block summary" aria-labelledby="h-sum">
-      <h2 id="h-sum" class="eyebrow">Area summary</h2>
-      <p class="aoi-name" id="aoi-name"></p>
-      <div id="summary" class="lede"></div>
-      <div class="outlook" id="outlook-wrap">
-        <h3 class="mini">High-activity months ahead <span class="muted">climatology, not a forecast</span></h3>
-        <div class="strip" id="outlook" role="list"></div>
-        <p class="note" id="outlook-note"></p>
       </div>
     </section>
-
-    <section class="block" id="unusual" aria-labelledby="h-unusual">
-      <h2 id="h-unusual">Where is it unusual now?</h2>
-      <p class="lede2" id="unusual-note">Loading cell data…</p>
-      <ol class="toplist" id="toplist"></ol>
-    </section>
-
-    <section class="block cal-hero" aria-labelledby="h-cal">
+    <section class="view" id="v-calendar" data-view="calendar" aria-label="Calendar">
+      <header class="vhead"><h2>When does it burn?</h2><p>Every month since 2000, on one scale.</p></header>
+      <section class="block cal-hero" aria-labelledby="h-cal">
       <div class="head"><h2 id="h-cal">Burning activity calendar</h2>
         <button type="button" class="btn small png" data-png="cal">PNG</button></div>
       <div class="seg" id="cal-modes" role="group" aria-label="Calendar data source"></div>
@@ -157,34 +144,62 @@
         <span class="chip l" id="chip-l" hidden>Naive splice</span><span class="chip r" id="chip-r" hidden>Harmonized</span>
         <div class="handle" id="cal-handle" role="slider" tabindex="0" aria-label="Swipe between naive splice and harmonized" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50" hidden></div>
       </div>
-      <div class="cmp-wrap" id="cmp-wrap" hidden>
-        <figure class="cmp"><figcaption id="cmp-title-a"></figcaption><div class="chart" id="cmp-a" role="img"></div></figure>
-        <figure class="cmp"><figcaption id="cmp-title-b"></figcaption><div class="chart" id="cmp-b" role="img"></div></figure>
-      </div>
       <ul class="legend" id="cal-legend"></ul>
       <p class="note" id="cal-note"></p>
     </section>
-
-    <section class="block" aria-labelledby="h-month">
+      <section class="block" aria-labelledby="h-month">
       <div class="head"><h2 id="h-month">This month vs history</h2><button type="button" class="btn small png" data-png="month">PNG</button></div>
       <p class="lede2" id="month-text"></p>
       <div class="chart h260" id="month-chart" role="img"></div>
     </section>
-
-    <section class="block" aria-labelledby="h-season">
+      <section class="block" aria-labelledby="h-season">
       <div class="head"><h2 id="h-season">Typical season</h2>
         <label class="fld inline"><span>Overlay year</span><select id="season-year"></select></label>
         <button type="button" class="btn small png" data-png="season">PNG</button></div>
       <div class="chart h260" id="season-chart" role="img"></div>
     </section>
-
-    <section class="block" aria-labelledby="h-anom">
+    </section>
+    <section class="view" id="v-outlook" data-view="outlook" aria-label="Outlook">
+      <header class="vhead"><h2>What to expect?</h2><p>Which upcoming months are usually busy. Climatology, not a forecast.</p></header>
+      <section class="block outlook-block"><div class="outlook" id="outlook-wrap">
+        <h3 class="mini">High-activity months ahead <span class="muted">climatology, not a forecast</span></h3>
+        <div class="strip" id="outlook" role="list"></div>
+        <p class="note" id="outlook-note"></p>
+      </div>
+    </section>
+    </section>
+    <section class="view" id="v-anomalies" data-view="anomalies" aria-label="Anomalies">
+      <header class="vhead"><h2>What is unusual?</h2><p>Places and months that stand out against their own history.</p></header>
+      <section class="block" id="unusual" aria-labelledby="h-unusual">
+      <h2 id="h-unusual">Where is it unusual now?</h2>
+      <p class="lede2" id="unusual-note">Loading cell data…</p>
+      <ol class="toplist" id="toplist"></ol>
+    </section>
+      <section class="block" aria-labelledby="h-anm"><h2 id="h-anm">Anomaly map</h2>
+        <button type="button" class="mm-btn" id="anom-minimap" aria-label="Anomaly map. Open it on the Map section."></button>
+        <ul class="mm-leg" id="anom-leg"></ul><p class="note" id="anom-mm-note"></p></section>
+      <section class="block" aria-labelledby="h-anom">
       <div class="head"><h2 id="h-anom">Anomalies</h2><button type="button" class="btn small png" data-png="anom">PNG</button></div>
       <p class="note">Robust z-score per calendar month: (x &minus; median) / (1.4826 &middot; MAD), clipped at &plusmn;3. Orange = busier than usual, blue = quieter.</p>
       <div class="chart h420" id="anom-chart" role="img"></div>
     </section>
-
-    <section class="block" aria-labelledby="h-ba" id="before-after">
+    </section>
+    <section class="view" id="v-compare" data-view="compare" aria-label="Compare">
+      <header class="vhead"><h2>How do areas differ?</h2><p>Two areas on one colour scale.</p></header>
+      <section class="block compare-block">
+        <div class="row"><label class="fld"><span>Compare with</span><select id="cmp-region"></select></label></div>
+        <p class="note" id="cmp-empty">Pick a second area to see both calendars side by side and the yearly totals overlaid.</p>
+        <div class="cmp-wrap" id="cmp-wrap" hidden>
+        <figure class="cmp"><figcaption id="cmp-title-a"></figcaption><div class="chart" id="cmp-a" role="img"></div></figure>
+        <figure class="cmp"><figcaption id="cmp-title-b"></figcaption><div class="chart" id="cmp-b" role="img"></div></figure>
+      </div>
+      
+        <div class="chart h300" id="cmp-annual" role="img" hidden></div>
+      </section>
+    </section>
+    <section class="view" id="v-data" data-view="data" aria-label="Data and method">
+      <header class="vhead"><h2>Can I trust it?</h2><p>Validation, method, downloads and data access.</p></header>
+      <section class="block" aria-labelledby="h-ba" id="before-after">
       <div class="head"><h2 id="h-ba">Naive stitching flips the sign of the change</h2><button type="button" class="btn small png" data-png="ba">PNG</button></div>
       <p class="lede2">Change in mean annual total, 2012&ndash;2025 vs 2001&ndash;2011, Central Asia.</p>
       <ul class="trio" id="trio"></ul>
@@ -195,8 +210,7 @@
       </div>
       <p class="note">Chart shows the selected area. The three figures above are region-wide. <a href="#why" id="why-link">Why does stitching fail?</a></p>
     </section>
-
-    <section class="block" aria-labelledby="h-exp">
+      <section class="block" aria-labelledby="h-exp">
       <h2 id="h-exp">Export</h2>
       <div class="exp">
         <button type="button" class="btn primary" id="dl-points">Download hotspots CSV</button>
@@ -209,20 +223,25 @@
       <p class="note" id="raw-links"></p>
       <progress id="exp-progress" max="1" value="0" hidden></progress>
     </section>
-
-    <details class="block method" id="method">
+      <details class="block method" id="method">
       <summary><h2 id="h-method">Methodology</h2></summary>
       <div id="method-body"></div>
       <div id="why" class="why"></div>
     </details>
-    <footer class="foot">
+      <footer class="foot">
       <p>FireChronicle &mdash; built by <strong>Deep Space AI</strong> (Dushanbe, Tajikistan) for the NASA Space Apps Challenge 2026, challenge &lsquo;Harmonization of MODIS and VIIRS Hot Spots&rsquo;.</p>
       <p class="links"><a href="https://github.com/komilovsg/firechronicle" target="_blank" rel="noopener noreferrer">GitHub repo</a> &middot; <a href="https://github.com/komilovsg/firechronicle/issues" target="_blank" rel="noopener noreferrer">Issues</a> &middot; <button type="button" class="linkbtn" id="cite-foot">Cite</button></p>
       <p>Data: NASA FIRMS. Not an official NASA product.</p>
       <p class="small">Basemap &copy; OpenStreetMap contributors, OpenFreeMap.</p>
     </footer>
+    </section>
   </main>
 </div>
+<nav class="tabbar" id="tabbar" aria-label="Sections"><a class="tab-item" href="#v=overview" data-view="overview"><svg class="ni" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3h7v9H3zM14 3h7v5h-7zM14 12h7v9h-7zM3 16h7v5H3z"/></svg><span>Overview</span></a><a class="tab-item" href="#v=map" data-view="map"><svg class="ni" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 4 3 6.5v13L9 17l6 3 6-2.5v-13L15 7zM9 4v13M15 7v13"/></svg><span>Map</span></a><a class="tab-item" href="#v=calendar" data-view="calendar"><svg class="ni" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h16v14H4zM4 10h16M8 3v4M16 3v4"/></svg><span>Calendar</span></a><a class="tab-item" href="#v=outlook" data-view="outlook"><svg class="ni" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8z"/></svg><span>Outlook</span></a><button type="button" class="tab-item" id="tab-more" aria-haspopup="dialog"><svg class="ni" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h.01M12 12h.01M19 12h.01"/></svg><span>More</span></button></nav>
+<div id="holding" hidden><section class="block proof" id="proof-block" aria-labelledby="h-proof">
+      <div class="proof-head"><h2 id="h-proof">Change in fire activity</h2><span class="proof-cap" id="proof-cap">Central Asia</span><a class="proof-why" href="#before-after" id="proof-why">Why? &rarr;</a></div>
+      <ul class="insights" id="insights" aria-label="Key figures for Central Asia"></ul>
+    </section></div>
 <button type="button" id="ask-btn" class="ember-fab ember-host" aria-haspopup="dialog" aria-label="Ask Ember, the FireChronicle SI assistant" title="Ask Ember (A)"><span class="fab-label" aria-hidden="true">Ask Ember</span><span id="ask-ember" class="fab-ember"></span></button>
 <script type="module" src="/src/main.ts"></script>
 </body>

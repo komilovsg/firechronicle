@@ -3,7 +3,7 @@ import { HeatmapChart, LineChart, BarChart } from 'echarts/charts';
 import { GridComponent, TooltipComponent, VisualMapComponent, MarkLineComponent, MarkAreaComponent, LegendComponent, AriaComponent } from 'echarts/components';
 import { CanvasRenderer } from 'echarts/renderers';
 import { SEQ, type Theme } from './theme';
-import { MONTH_ABBR, tFromYM, tLabel, yearOf } from './lib/time';
+import { MONTH_ABBR, monthOf, tFromYM, tLabel, yearOf } from './lib/time';
 import { percentile } from './lib/stats';
 import { fmtInt } from './lib/format';
 import type { Series } from './lib/series';
@@ -170,5 +170,37 @@ export function compareAnnualOption(a: Series, b: Series, nameA: string, nameB: 
     xAxis: { type: 'value', min: Math.min(y0, 2000), max: yearOf(tLast) + 1, interval: 2, ...axisCommon(th), axisLabel: { color: th.ink3, fontSize: 10, fontFamily: mono, formatter: (v: number) => String(v) }, splitLine: { show: false } },
     yAxis: { type: 'value', ...axisCommon(th), axisLabel: { color: th.ink3, fontSize: 11, fontFamily: mono, formatter: (v: number) => fmt(v) } },
     series: [line(nameA, mk(a, 'harm'), col[0], false), line(nameB, mk(b, 'harm'), col[1], false), line(`${nameA} (naive)`, mk(a, 'naive'), col[0], true), line(`${nameB} (naive)`, mk(b, 'naive'), col[1], true)],
+  };
+}
+
+/** Last 24 months of the monthly harmonized series over the normal range (P10-P90 band + median per calendar month). NRT months are dashed. */
+export function last24Option(arr: Float64Array, cl: Climatology, tLast: number, tNrt: number, pdays: number, th: Theme): Opt {
+  const n = 24, ts: number[] = []; for (let t = tLast - n + 1; t <= tLast; t++) ts.push(t);
+  const lab = ts.map((t) => `${MONTH_ABBR[monthOf(t) - 1]} ${String(yearOf(t)).slice(2)}`);
+  const val = ts.map((t) => (Number.isFinite(arr[t]) ? arr[t] : null));
+  const idx = (t: number) => monthOf(t) - 1;
+  const lo = ts.map((t) => cl.p10[idx(t)]), band = ts.map((t) => cl.p90[idx(t)] - cl.p10[idx(t)]), med = ts.map((t) => cl.median[idx(t)]);
+  const k = Math.max(0, ts.findIndex((t) => t >= tNrt));
+  const solid = val.map((v, i) => (i < k ? v : null)), dashed = val.map((v, i) => (i >= k - 1 ? v : null));
+  const none = { show: false };
+  return {
+    ...base(th), aria: { enabled: false },
+    legend: { data: ['Harmonized', 'Normal (median)', 'P10–P90'], top: 0, left: 0, textStyle: { color: th.ink2, fontSize: 11 }, itemHeight: 8, itemWidth: 16 },
+    tooltip: { ...base(th).tooltip, trigger: 'axis', formatter: (ps: Opt[]) => {
+      const i = ps[0].dataIndex, t = ts[i], v = val[i], m = med[i];
+      const pct = v !== null && m > 0 ? `${v >= m ? '+' : '−'}${Math.abs(Math.round((v / m - 1) * 100))}% vs median` : '';
+      const part = t === tLast && pdays < 28 ? ` (partial, ${pdays} d)` : t >= tNrt ? ' (provisional, NRT)' : '';
+      return `<b>${MONTH_ABBR[idx(t)]} ${yearOf(t)}</b>${part}<br>Value ${v === null ? 'n/a' : fmt(v)}<br>Median ${fmt(m)} · P10–P90 ${fmt(lo[i])}–${fmt(cl.p90[idx(t)])}<br>${pct}`;
+    } },
+    grid: { left: 50, right: 12, top: 30, bottom: 26 },
+    xAxis: { type: 'category', data: lab, boundaryGap: false, ...axisCommon(th), splitLine: { show: false }, axisLabel: { color: th.ink3, fontSize: 11, fontFamily: mono, interval: window.innerWidth < 640 ? 5 : 2 } },
+    yAxis: { type: 'value', ...axisCommon(th), axisLabel: { color: th.ink3, fontSize: 11, fontFamily: mono, formatter: (v: number) => fmt(v) } },
+    series: [
+      { name: 'P10', type: 'line', stack: 'b', data: lo, symbol: 'none', lineStyle: { opacity: 0 }, silent: true, tooltip: none },
+      { name: 'P10–P90', type: 'line', stack: 'b', data: band, symbol: 'none', lineStyle: { opacity: 0 }, areaStyle: { color: th.ink3, opacity: 0.25 }, silent: true, tooltip: none },
+      { name: 'Normal (median)', type: 'line', data: med, symbol: 'none', lineStyle: { width: 1.5, color: th.ink3, type: 'dotted' } },
+      { name: 'Harmonized', type: 'line', data: solid, symbol: 'circle', symbolSize: 5, lineStyle: { width: 2, color: th.ember }, itemStyle: { color: th.ember, borderColor: th.surface, borderWidth: 2 } },
+      { name: 'Harmonized (NRT)', type: 'line', data: dashed, symbol: 'circle', symbolSize: 5, lineStyle: { width: 2, color: th.ember, type: 'dashed' }, itemStyle: { color: th.ember, borderColor: th.surface, borderWidth: 2 }, tooltip: none },
+    ],
   };
 }

@@ -63,7 +63,8 @@ export class FireMap {
     this.map.on('move', () => this.checkDrift());
     this.map.on('click', (e) => { if (this.drawing) this.onDrawClick?.([e.lngLat.lng, e.lngLat.lat]); });
     this.map.on('dblclick', (e) => { if (this.drawing) { e.preventDefault(); this.onDrawFinish?.(); } });
-    this.ready = new Promise((res) => this.map.once('load', () => res()));
+    // style.load: sources and layers exist; waiting for 'load' would also wait for every basemap tile
+    this.ready = new Promise((res) => { this.map.once('style.load', () => res()); this.map.once('load', () => res()); });
   }
   private src(id: string): maplibregl.GeoJSONSource | undefined { return this.map.getSource(id) as maplibregl.GeoJSONSource | undefined; }
   private bright(): boolean { return this.bm === 'mono' ? this.dark : this.bm !== 'color'; }
