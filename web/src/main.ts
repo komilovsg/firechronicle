@@ -79,6 +79,16 @@ function retryMapTiles(): Promise<boolean> {
     fm.setBasemap(bm, imageryDateFor(mapMode === 'anomaly' ? null : state.frameT, new Date(), imgManual));
   });
 }
+/** Faint outline of the six countries behind the map placeholder (no extra request: countries.geojson is already loaded). */
+function placeSilhouette(): void {
+  const ph = document.getElementById('map-ph'); if (!ph || ph.querySelector('.mp-sil')) return;
+  const rings = countries.features.flatMap((f) => geometryPolys(f.geometry as { type: string; coordinates: unknown }).map((p) => p[0] as [number, number][]));
+  let x0 = 180, x1 = -180, y0 = 90, y1 = -90; for (const r of rings) for (const [lo, la] of r) { x0 = Math.min(x0, lo); x1 = Math.max(x1, lo); y0 = Math.min(y0, la); y1 = Math.max(y1, la); }
+  const k = Math.cos(((y0 + y1) / 2) * Math.PI / 180), W = (x1 - x0) * k, H = y1 - y0, NS = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(NS, 'svg'); svg.setAttribute('viewBox', `0 0 ${W.toFixed(2)} ${H.toFixed(2)}`); svg.setAttribute('class', 'mp-sil'); svg.setAttribute('aria-hidden', 'true'); svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+  const path = document.createElementNS(NS, 'path'); path.setAttribute('d', rings.map((r) => 'M' + r.map(([lo, la]) => `${((lo - x0) * k).toFixed(2)} ${(y1 - la).toFixed(2)}`).join('L') + 'Z').join(''));
+  svg.append(path); ph.prepend(svg);
+}
 function areaCentroid(): { lat: number; lon: number } | null {
   const a = state.aoi; if (a.kind === 'circle') return { lat: a.lat, lon: a.lon };
   if (!aoiCells.length) return null;
@@ -900,6 +910,7 @@ function setView(v: View, o: { write?: boolean; push?: boolean } = {}): void {
   document.querySelectorAll<HTMLElement>('.view').forEach((s) => s.classList.toggle('on', s.dataset.view === v));
   const main = ['overview', 'map', 'calendar', 'outlook'].includes(v);
   document.querySelectorAll<HTMLElement>('.nav-item, .tab-item').forEach((a) => { if (a.dataset.view === v || (!main && a.id === 'tab-more')) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current'); });
+  { const ti = ['overview', 'map', 'calendar', 'outlook'].indexOf(v); document.getElementById('tabbar')?.style.setProperty('--tab-i', String(ti < 0 ? 4 : ti)); }
   if (v === 'map' && fireMap) {
     const fm = fireMap;
     requestAnimationFrame(() => { fm.map.resize(); if (fitPending) { fitPending = false; fitMap(); } void setMapHexes(); drawShape(); renderMap(); });
@@ -1170,7 +1181,7 @@ async function boot(): Promise<void> {
   lat = new Float64Array(cellIds.length); lon = new Float64Array(cellIds.length);
   cellIds.forEach((id, i) => { const [a, b] = cellToLatLng(id); lat[i] = a; lon[i] = b; });
   $('badge-sample').hidden = !meta.sample;
-  initFreshness(meta);
+  placeSilhouette(); initFreshness(meta);
   renderInsights(); renderProof();
   wireControls(); wireExtras(); renderMethod(); initMapDrawer(() => (series ? buildHud() : null));
   initAssistant({

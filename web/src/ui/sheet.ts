@@ -19,7 +19,7 @@ export function openInfoSheet(title: string, body: HTMLElement, returnFocus?: HT
   const lock = lockableBody(), scrollY = window.scrollY, b = document.body.style, prev = { p: b.position, t: b.top, w: b.width };
   if (lock) { b.position = 'fixed'; b.top = `-${scrollY}px`; b.width = '100%'; }
   const H = sheet.offsetHeight; let y = H, closed = false;
-  const apply = (ty: number, anim: boolean): void => { y = ty; sheet.style.transition = anim && !reduce() ? 'transform 200ms cubic-bezier(.23,1,.32,1)' : 'none'; sheet.style.transform = `translateY(${ty}px)`; backdrop.style.opacity = String(Math.max(0, 1 - ty / H)); };
+  const apply = (ty: number, anim: boolean): void => { y = ty; sheet.style.transition = anim && !reduce() ? 'transform 200ms cubic-bezier(.2,.8,.2,1)' : 'none'; sheet.style.transform = `translateY(${ty}px)`; backdrop.style.opacity = String(Math.max(0, 1 - ty / H)); };
   sheet.style.transform = `translateY(${H}px)`; requestAnimationFrame(() => requestAnimationFrame(() => apply(0, true)));
   const close = (): void => {
     if (closed) return; closed = true; const si = stack.indexOf(close); if (si >= 0) stack.splice(si, 1);

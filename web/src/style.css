@@ -1213,3 +1213,18 @@ html[data-side="rail"] .side-row .side-credit, html[data-rail] .side-row .side-c
 .team-name { white-space: nowrap; }
 
 .h2-lab b { white-space: nowrap; } .h2-lab.chk b { font-size: clamp(18px, 1.9vw, 28px); }
+
+/* equal-height rows: Proof tiles, trio, chart + validation */
+.block.proof ul.insights, .trio, .ba { align-items: stretch; }
+.block.proof ul.insights li.tile, .trio li { display: flex; flex-direction: column; height: 100%; }
+.block.proof .tile .s, .block.proof .tile .tspark, .trio li .s { margin-top: auto; }
+.ba > * { min-width: 0; } .ba .valid { height: 100%; }
+@media (max-width: 639px) {
+  .tab-item[aria-current="page"]::before { content: none; }
+  .tabbar::after { content: ''; position: absolute; top: 0; left: 0; width: 20%; height: 3px; background: linear-gradient(90deg, transparent 28%, var(--ember) 28% 72%, transparent 72%); border-radius: 0 0 3px 3px; transform: translateX(calc(var(--tab-i, 0) * 100%)); transition: transform .22s var(--side-ease); pointer-events: none; }
+}
+@media (prefers-reduced-motion: reduce) { .tabbar::after { transition: none; } }
+.map-ph .mp-sil { position: absolute; inset: 8% 8%; width: 84%; height: 84%; pointer-events: none; }
+.map-ph .mp-sil path { fill: color-mix(in srgb, var(--ink) 6%, transparent); stroke: var(--ink-3); stroke-width: .03; stroke-opacity: .5; }
+.map-ph[data-mode="light"] .mp-sil { display: none; }
+.mp-box { position: relative; }
