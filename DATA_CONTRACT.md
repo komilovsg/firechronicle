@@ -49,7 +49,7 @@ How to read it: naive 1.6 means "stitching says +60 % after 2012". The MODIS-onl
 ## `cells.json`
 H3 resolution 5 cells that have at least one detection, from any sensor and any time.
 ```json
-{"cells": ["8521...ffff", "..."]}
+{"cells": ["8521...ffff", "..."], "country": ["KAZ", "..."]}   // country: ISO3 per cell, majority of its detections
 ```
 A cell's position in this array is its `cellIdx`.
 

@@ -1,7 +1,7 @@
 {
  "version": 2,
  "sample": false,
- "generated_at": "2026-11-14T16:58:20Z",
+ "generated_at": "2026-11-14T17:18:20Z",
  "data_through": "2026-11-14",
  "region": {
   "name": "Central Asia",
@@ -168,7 +168,7 @@
    "snpp": {
     "country_month": {
      "bias_pct": -0.06,
-     "mae": 46.96,
+     "mae": 46.95,
      "r2": 0.988,
      "n": 995
     },

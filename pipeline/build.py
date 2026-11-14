@@ -476,7 +476,8 @@ def write_outputs(df, m, harm, sdc, pv, region_series, validation, cal, cleaning
     OUT.mkdir(parents=True, exist_ok=True)
     cells = sorted(m["cell"].unique().to_list())
     cidx = {c: i for i, c in enumerate(cells)}
-    write_json("cells.json", {"cells": cells})
+    cc = dict(m.select("cell", "country").unique("cell").iter_rows())
+    write_json("cells.json", {"cells": cells, "country": [cc[c] for c in cells]})
 
     keep = (m.select(pl.sum_horizontal(SENSORS)).to_series().to_numpy() > 0) | (harm > 0)
     mm = m.filter(pl.Series(keep))
