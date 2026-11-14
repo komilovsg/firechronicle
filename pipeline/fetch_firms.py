@@ -177,6 +177,30 @@ def _read_env_key():
     return None
 
 
+SATS = {"terra": (25994, "Terra", "MODIS", 2330), "aqua": (27424, "Aqua", "MODIS", 2330),
+        "snpp": (37849, "Suomi NPP", "VIIRS", 3060), "n20": (43013, "NOAA-20", "VIIRS", 3060),
+        "n21": (54234, "NOAA-21", "VIIRS", 3060)}
+
+
+def fetch_tle():
+    """Current orbital elements (TLE) from CelesTrak for the fire satellites -> web/public/data/tle.json."""
+    import json
+    from datetime import datetime, timezone
+    out = {"source": "CelesTrak GP data (https://celestrak.org)", "fetched_at":
+           datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"), "satellites": []}
+    for key, (cat, name, instrument, swath_km) in SATS.items():
+        status, body = get(f"https://celestrak.org/NORAD/elements/gp.php?CATNR={cat}&FORMAT=TLE")
+        lines = [x.strip() for x in body.decode("utf-8", "replace").splitlines() if x.strip()]
+        if status != 200 or len(lines) < 3 or not lines[1].startswith("1 ") or not lines[2].startswith("2 "):
+            print(f"tle {key}: unavailable, skipped")
+            continue
+        out["satellites"].append({"id": key, "name": name, "norad": cat, "instrument": instrument,
+                                  "swath_km": swath_km, "tle1": lines[1], "tle2": lines[2]})
+    dest = ROOT / "web" / "public" / "data" / "tle.json"
+    dest.write_text(json.dumps(out, indent=1))
+    print(f"tle: {len(out['satellites'])} satellites -> {dest}")
+
+
 if __name__ == "__main__":
-    {"country": fetch_country, "api": fetch_api, "recent": fetch_recent,
+    {"country": fetch_country, "api": fetch_api, "recent": fetch_recent, "tle": fetch_tle,
      "availability": lambda: print(availability())}[sys.argv[1]]()

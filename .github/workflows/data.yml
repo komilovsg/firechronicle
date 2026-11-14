@@ -60,6 +60,9 @@ jobs:
       - name: Re-harmonize
         run: python pipeline/build.py --points
 
+      - name: Refresh satellite orbital elements (CelesTrak TLE)
+        run: python pipeline/fetch_firms.py tle || echo "TLE refresh skipped; keeping the published file"
+
       - run: python -m pytest -q pipeline
 
       - uses: actions/setup-node@v4
