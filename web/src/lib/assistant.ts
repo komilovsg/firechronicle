@@ -106,5 +106,25 @@ export function fillNavFallback(action: NavAction | null, text: string, lim: Nav
     const m = /(?:compare(?:d)?\s+(?:with|to)|\bvs\.?|\bversus)\s+([a-z][a-z\s-]*)/.exec(t);
     if (m) for (const [re, id] of COUNTRIES) if (re.test(m[1]) && lim.regionIds.includes(id)) { out.compare = id; break; }
   }
+  if (out.yearFrom === undefined || out.yearTo === undefined) {
+    const range = /(?:^|[^\d])((?:19|20)\d{2})\s*(?:to|until|through|-|\u2013|\u2014)\s*((?:19|20)\d{2})(?!\d)/.exec(t), single = /\bin\s+((?:19|20)\d{2})(?!\d)/.exec(t);
+    const ok = (y: number): boolean => y >= lim.firstYear && y <= lim.lastYear;
+    let f: number | undefined, to: number | undefined;
+    if (range) { f = +range[1]; to = +range[2]; } else if (single) { f = to = +single[1]; }
+    if (f !== undefined && to !== undefined && ok(f) && ok(to) && f <= to) {
+      if (out.yearFrom === undefined) out.yearFrom = f;
+      if (out.yearTo === undefined) out.yearTo = to;
+    }
+  }
   return Object.keys(out).length ? out : null;
+}
+
+/** Split text into plain and numeric parts (numbers, percentages, years) so the UI can style numbers without innerHTML. */
+export function splitNumbers(text: string): { t: string; num: boolean }[] {
+  const out: { t: string; num: boolean }[] = [];
+  const re = /(?<![\w.])[+\u2212-]?\d+(?:[.,\u2009]\d+)*(?:\s?%)?(?!\w)/g;
+  let last = 0, m: RegExpExecArray | null;
+  while ((m = re.exec(text))) { if (m.index > last) out.push({ t: text.slice(last, m.index), num: false }); out.push({ t: m[0], num: true }); last = m.index + m[0].length; }
+  if (last < text.length) out.push({ t: text.slice(last), num: false });
+  return out;
 }

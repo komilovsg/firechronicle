@@ -552,7 +552,7 @@ import { fillNavFallback } from './assistant';
 describe('go-mode keyword fallback', () => {
   const lim = { regionIds: ['central-asia', 'KAZ', 'UZB', 'TKM', 'KGZ', 'TJK', 'AFG'], firstYear: 2000, lastYear: 2026, modes: ['harm', 'modis', 'viirs', 'naive', 'swipe'] };
   it('fills mode from keywords', () => {
-    expect(fillNavFallback(null, 'show Kazakhstan 2015 to 2020 swipe', lim)).toEqual({ mode: 'swipe' });
+    expect(fillNavFallback(null, 'show Kazakhstan 2015 to 2020 swipe', lim)).toEqual({ mode: 'swipe', yearFrom: 2015, yearTo: 2020 });
     expect(fillNavFallback({ area: 'KAZ' }, 'naive splice please', lim)).toEqual({ area: 'KAZ', mode: 'naive' });
     expect(fillNavFallback(null, 'raw MODIS', lim)).toEqual({ mode: 'modis' }); expect(fillNavFallback(null, 'raw viirs counts', lim)).toEqual({ mode: 'viirs' });
     expect(fillNavFallback(null, 'harmonised series', lim)).toEqual({ mode: 'harm' });
@@ -566,5 +566,24 @@ describe('go-mode keyword fallback', () => {
   });
   it('never overrides what the backend returned', () => {
     expect(fillNavFallback({ mode: 'viirs', compare: null }, 'swipe vs tajikistan', lim)).toEqual({ mode: 'viirs', compare: null });
+  });
+});
+
+import { splitNumbers } from './assistant';
+describe('go-mode years fallback and number spans', () => {
+  const lim = { regionIds: ['KAZ', 'TJK', 'central-asia'], firstYear: 2000, lastYear: 2026, modes: ['harm', 'swipe'] };
+  it('fills missing years from the text, only where the backend left gaps', () => {
+    expect(fillNavFallback(null, 'show Kazakhstan 2015 to 2020', lim)).toEqual({ yearFrom: 2015, yearTo: 2020 });
+    expect(fillNavFallback({ area: 'KAZ', yearFrom: 2015 }, 'Kazakhstan 2015 to 2020 swipe', lim)).toEqual({ area: 'KAZ', yearFrom: 2015, yearTo: 2020, mode: 'swipe' });
+    expect(fillNavFallback(null, 'from 2010 \u2013 2014', lim)).toEqual({ yearFrom: 2010, yearTo: 2014 });
+    expect(fillNavFallback(null, 'what happened in 2023', lim)).toEqual({ yearFrom: 2023, yearTo: 2023 });
+    expect(fillNavFallback({ yearFrom: 2012, yearTo: 2016 }, '2001 to 2005', lim)).toEqual({ yearFrom: 2012, yearTo: 2016 });
+    expect(fillNavFallback(null, '2030 to 2040', lim)).toBeNull(); expect(fillNavFallback(null, '2020 to 2010', lim)).toBeNull();
+    expect(fillNavFallback(null, 'hotspot 12345 detections', lim)).toBeNull();
+  });
+  it('wraps numbers and percentages, leaves words alone', () => {
+    expect(splitNumbers('Up 21.9% in 2025: 147 detections (-54%).')).toEqual([{ t: 'Up ', num: false }, { t: '21.9%', num: true }, { t: ' in ', num: false }, { t: '2025', num: true }, { t: ': ', num: false }, { t: '147', num: true }, { t: ' detections (', num: false }, { t: '-54%', num: true }, { t: ').', num: false }]);
+    expect(splitNumbers('R2 and VIIRS375 stay')).toEqual([{ t: 'R2 and VIIRS375 stay', num: false }]);
+    expect(splitNumbers('')).toEqual([]); expect(splitNumbers('no numbers').every((x) => !x.num)).toBe(true);
   });
 });

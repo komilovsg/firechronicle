@@ -822,7 +822,7 @@ function wireExtras(): void {
   // phones: ? / GitHub / theme / cite live in the overflow menu
   {
     const acts = document.querySelector('.hdr-actions')!, pop = $('more-pop'), more = $('more-btn');
-    const items = ['gh-btn', 'tour-btn', 'theme-btn', 'cite-menu'].map((id) => $(id));
+    const items = ['ask-menu', 'gh-btn', 'tour-btn', 'theme-btn', 'cite-menu'].map((id) => $(id));
     const place = (phone: boolean): void => { for (const it of items) { if (phone) { pop.append(it); it.classList.add('in-menu'); } else { acts.insertBefore(it, more); it.classList.remove('in-menu'); } } if (!phone) closeMenu(); };
     const closeMenu = (): void => { pop.hidden = true; more.setAttribute('aria-expanded', 'false'); };
     more.addEventListener('click', () => { pop.hidden = !pop.hidden; more.setAttribute('aria-expanded', String(!pop.hidden)); if (!pop.hidden) (pop.querySelector('a, button') as HTMLElement | null)?.focus(); });
@@ -830,6 +830,7 @@ function wireExtras(): void {
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !pop.hidden) { closeMenu(); more.focus(); } });
     pop.addEventListener('click', (e) => { if ((e.target as HTMLElement).closest('button, a')) setTimeout(closeMenu, 0); });
     const mq = matchMedia('(max-width: 640px)'); place(mq.matches); mq.addEventListener('change', () => place(mq.matches));
+    $('ask-menu').addEventListener('click', () => $('ask-btn').click());
     $('cite-menu').addEventListener('click', (e) => void copyText(CITATION, e.currentTarget as HTMLElement, '\u2713', '\u275e'));
   }
   addEventListener('keydown', (e) => {

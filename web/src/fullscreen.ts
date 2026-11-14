@@ -1,4 +1,5 @@
 import { fsLayout } from './lib/fsLayout';
+import { repark } from './ui/portal';
 import { el } from './ui/dom';
 import { snapDecision } from './ui/selectLogic';
 import { onFreshTick } from './freshnessUi';
@@ -68,9 +69,9 @@ function build(api: FsApi) {
   const exit = rb('Exit fullscreen map', 'Exit (Esc or F)', 'danger', () => void exitFs(), '\u2715');
   const reset = rb('Reset view', 'Reset view (R)', 'ic ic-reset', () => api.resetView()); reset.dataset.reset = '1';
   const style = rb('Map style', 'Map style', 'ic ic-style', () => api.openStyle(style));
-  const c0 = cap(exit), c2 = cap(reset, style);
+  const c0 = cap(exit), c2 = cap(reset, style), c4 = cap();
   rail.append(c0, cap(rb('Zoom in', 'Zoom in', '', () => api.zoom(1), '+'), rb('Zoom out', 'Zoom out', '', () => api.zoom(-1), '\u2212')), c2,
-    cap(rb('Switch theme', 'Theme', 'ic ic-theme', () => api.toggleTheme()), rb('Hide the panels', 'Hide panels (H)', 'ic ic-hide', () => ov.classList.toggle('fs-clean'))));
+    cap(rb('Switch theme', 'Theme', 'ic ic-theme', () => api.toggleTheme()), rb('Hide the panels', 'Hide panels (H)', 'ic ic-hide', () => ov.classList.toggle('fs-clean'))), c4);
   // bottom row
   const bottom = el('div', 'fs-bottom');
   const bl = panel('legend', 'Legend', collapsed); const legendHome = el('div', 'fs-legend'); const nrt = el('p', 'fs-nrt'); bl.body.append(legendHome, nrt, el('p', 'fs-credit', 'FireChronicle \u00b7 Deep Space AI'));
@@ -84,7 +85,7 @@ function build(api: FsApi) {
   const sheetWrap = el('div', 'fs-sheetwrap'); const sheet = el('div', 'fs-sheet'); const sh = el('div', 'fs-sheadhead'); sh.append(el('div', 'csel-grab')); const speek = el('div', 'fs-speek'); const sbody = el('div', 'fs-sbody'); sheet.append(sh, speek, sbody); sheetWrap.append(sheet);
   hud.append(tl.root, rail, bottom, sheetWrap);
   ov.append(hud); document.body.append(ov);
-  return { speek, sheetWrap, ov, hud, name, sel, figs, f1, f2, f3, fresh, tl, rail, c0, c2, bl, tm, br, exit, legendHome, replayHome, nrt, spark, sparkCap, top, ctx, sheet, sh, sbody, unH, panels: [tl.root, rail, bl.root, tm.root, br.root] };
+  return { speek, sheetWrap, ov, hud, name, sel, figs, f1, f2, f3, fresh, tl, rail, c0, c2, c4, bl, tm, br, exit, legendHome, replayHome, nrt, spark, sparkCap, top, ctx, sheet, sh, sbody, unH, panels: [tl.root, rail, bl.root, tm.root, br.root] };
 }
 
 function drawBars(c: HTMLCanvasElement, b: NonNullable<HudData['bars']>): void {
@@ -182,8 +183,8 @@ async function enterFs(api: FsApi): Promise<void> {
   const h = hudEls, ov = overlay!;
   const wrap = document.querySelector('.mapwrap')!, replay = $('replay');
   move(wrap, ov, h.hud);
-  move(replay, h.replayHome); move($('maplegend'), h.legendHome); move($('maplayers'), h.bl.body, h.bl.body.firstChild); move($('dim-toggle'), h.c2, h.c2.firstChild);
-  ov.hidden = false; ov.classList.remove('fs-clean'); ov.classList.add('fs-enter');
+  move(replay, h.replayHome); move($('maplegend'), h.legendHome); move($('maplayers'), h.bl.body, h.bl.body.firstChild); move($('dim-toggle'), h.c2, h.c2.firstChild); move($('ask-btn'), h.c4);
+  ov.hidden = false; ov.classList.remove('fs-clean'); ov.classList.add('fs-enter'); repark(); // open overlays follow into the fullscreen layer
   document.documentElement.classList.add('fs-on');
   active = true; api.pixelRatio(Math.min(devicePixelRatio || 1, 1.5));
   h.panels.forEach((p, i) => p.style.setProperty('--i', String(i)));
@@ -197,7 +198,7 @@ async function exitFs(fromBrowser = false): Promise<void> {
   if (!active || !overlay) return;
   active = false; sheetCleanup?.();
   if (!fromBrowser && document.fullscreenElement) { try { await document.exitFullscreen(); } catch { /* ignore */ } }
-  overlay.dataset.native = '0'; overlay.hidden = true;
+  overlay.dataset.native = '0'; overlay.hidden = true; repark(); // open popovers and the assistant go back to the page
   // put moved nodes back (reverse order)
   const h = hudEls!;
   h.legendHome.append($('maplegend')); // keep nodes inside the overlay while restoring order
