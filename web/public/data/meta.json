@@ -1,7 +1,7 @@
 {
  "version": 2,
  "sample": false,
- "generated_at": "2026-11-14T17:18:20Z",
+ "generated_at": "2026-11-14T18:19:20Z",
  "data_through": "2026-11-14",
  "region": {
   "name": "Central Asia",
@@ -161,7 +161,7 @@
   },
   "trend_theil_sen_per_year": {
    "naive": 533.8,
-   "harm": -3247.9,
+   "harm": -3248.0,
    "modis": -3019.8
   },
   "cv": {

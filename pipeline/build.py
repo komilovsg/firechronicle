@@ -472,6 +472,63 @@ def partial_month(df, cell_country, cal):
             "t": t[keep].tolist(), "harm": np.round(harm[keep], 2).tolist(), "regions": regions}
 
 
+def recent_daily(df: pl.DataFrame, cal: dict, n_days: int = 60, half_window: int = 3):
+    """Daily harmonized detections for the last n_days per region, plus a same-calendar-day baseline.
+
+    Daily values use the same pooled estimator as the monthly series, applied per country and day
+    (k per country x calendar month with drift; a sensor counts as observing on days inside its coverage).
+    Baseline: for each past complete year, the mean of the +-half_window days around the same calendar day;
+    then median / P10 / P90 across those years.
+    """
+    g = df.group_by("country", "acq_date").agg(
+        modis=(pl.col("sensor") == "modis").sum(), terra=(pl.col("modis_sat") == "terra").sum(),
+        **{s: (pl.col("sensor") == s).sum() for s in VIIRS})
+    first = date(2001, 1, 1)
+    n_all = (TODAY - first).days + 1
+    days_all = [first + timedelta(days=i) for i in range(n_all)]
+    di = {d: i for i, d in enumerate(days_all)}
+    on = {s: np.array([1.0 if COVER[s][0] <= d <= COVER[s][1] else 0.0 for d in days_all]) for s in ["terra", "aqua"] + VIIRS}
+    moy = np.array([d.month - 1 for d in days_all])
+    yidx = np.array([d.year - 2000 for d in days_all])
+    harm_c = np.zeros((len(CIDS), n_all))
+    for ci, c in enumerate(CIDS):
+        sub = g.filter((pl.col("country") == c) & (pl.col("acq_date") >= first))
+        idx = np.array([di[d] for d in sub["acq_date"].to_list()], dtype=int)
+        cnt = {k: np.zeros(n_all) for k in ["modis"] + VIIRS}
+        for k in cnt:
+            np.add.at(cnt[k], idx, sub[k].to_numpy().astype(float))
+        ws = cal["terra_share"]["k"][ci, moy]
+        modis_w = ws * on["terra"] + (1 - ws) * on["aqua"]
+        kr = {s: k_rows(cal, s, np.full(n_all, ci), moy, yidx) for s in VIIRS}
+        h, _ = harmonize(cnt["modis"], {s: cnt[s] for s in VIIRS}, kr, modis_w, {s: on[s] for s in VIIRS})
+        harm_c[ci] = h
+    regions = {"central-asia": harm_c.sum(0), **{c: harm_c[i] for i, c in enumerate(CIDS)}}
+    recent_idx = list(range(n_all - n_days, n_all))
+    out = {"days": [days_all[i].isoformat() for i in recent_idx], "window_days": 2 * half_window + 1,
+           "baseline_years": f"2001-{TODAY.year - 1}", "regions": {}}
+    for rid, series in regions.items():
+        med, p10, p90 = [], [], []
+        for i in recent_idx:
+            d = days_all[i]
+            vals = []
+            for y in range(2001, TODAY.year):
+                try:
+                    c = date(y, d.month, min(d.day, 28) if d.month == 2 else d.day)
+                except ValueError:
+                    continue
+                j = di.get(c)
+                if j is None:
+                    continue
+                lo, hi = max(0, j - half_window), min(n_all, j + half_window + 1)
+                vals.append(series[lo:hi].mean())
+            v = np.array(vals) if vals else np.array([0.0])
+            med.append(round(float(np.median(v)), 2)); p10.append(round(float(np.percentile(v, 10)), 2))
+            p90.append(round(float(np.percentile(v, 90)), 2))
+        out["regions"][rid] = {"harm": [round(float(series[i]), 2) for i in recent_idx],
+                               "median": med, "p10": p10, "p90": p90}
+    return out
+
+
 def write_outputs(df, m, harm, sdc, pv, region_series, validation, cal, cleaning, partial):
     OUT.mkdir(parents=True, exist_ok=True)
     cells = sorted(m["cell"].unique().to_list())
@@ -625,6 +682,12 @@ def main():
         ],
     }
     partial = partial_month(df, cell_country, cal)
+    OUT.mkdir(parents=True, exist_ok=True)
+    rec = recent_daily(df, cal)
+    write_json("recent.json", rec)
+    ca_r = rec["regions"]["central-asia"]
+    log(f"recent.json: {rec['days'][0]}..{rec['days'][-1]}, last 7 days CA harm={sum(ca_r['harm'][-7:]):.0f} "
+        f"vs median {sum(ca_r['median'][-7:]):.0f}")
     n_cells, n_rows = write_outputs(df, m, harm, sdc, pv, region_series, validation, cal, cleaning, partial)
     log(f"wrote {OUT}: cells={n_cells:,} monthly rows={n_rows:,} partial={'yes' if partial else 'no'}")
     print(json.dumps({k: validation[k] for k in ("naive_break_2012", "harmonized_break_2012",
