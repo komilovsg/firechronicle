@@ -85,6 +85,13 @@ Pre-aggregated series for the whole region and for each country. The web uses it
 ```
 Region ids: `central-asia`, `KAZ`, `UZB`, `TKM`, `KGZ`, `TJK`, `AFG`.
 
+## `recent.json`
+Daily harmonized detections for the last 60 days per region (`central-asia` + ISO3), plus a baseline from past complete years. For each day, the baseline takes the mean of the ±3-day window around the same calendar day in every past year, then the median / p10 / p90 across those years.
+```json
+{"days": ["2026-09-16", "..."], "window_days": 7, "baseline_years": "2001-2025",
+ "regions": {"central-asia": {"harm": [], "median": [], "p10": [], "p90": []}, "KAZ": {}}}
+```
+
 ## `countries.geojson`
 Simplified boundaries of the 6 countries as a FeatureCollection. Properties: `{"id": "TJK", "name": "Tajikistan"}`.
 
