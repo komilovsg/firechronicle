@@ -480,6 +480,8 @@ describe('assistant contracts', () => {
     expect(await ask(resp(200, {}), '', { q: 'q', lang: 'en' })).toEqual({ ok: false, error: { kind: 'unconfigured' } });
     const n = await nav(resp(200, { action: { area: 'TJK', yearFrom: 2005, mode: 'bogus' }, refused: false }), 'https://api.example', 'show tajikistan from 2005', lim);
     expect(n.ok && n.value).toEqual({ action: { area: 'TJK', yearFrom: 2005 }, refused: false });
+    const live = await nav(resp(200, { refused: false, state: { area: 'KAZ', yearFrom: 2015, yearTo: 2020 } }), 'https://api.example', 'x', lim);
+    expect(live.ok && live.value.action).toEqual({ area: 'KAZ', yearFrom: 2015, yearTo: 2020 });
     const nr = await nav(resp(200, { refused: true }), 'https://api.example', 'make me a sandwich', lim);
     expect(nr.ok && nr.value).toEqual({ action: null, refused: true });
   });
@@ -543,5 +545,26 @@ describe('el() text handling', () => {
     const a = domEl('div' as never, 'x', null) as unknown as { textContent?: string }, b = domEl('div' as never, undefined, undefined) as unknown as { textContent?: string }, c = domEl('div' as never, undefined, '') as unknown as { textContent?: string }, d = domEl('div' as never, 'k', 'hi') as unknown as { textContent?: string };
     expect(a.textContent).toBeUndefined(); expect(b.textContent).toBeUndefined(); expect(c.textContent).toBe(''); expect(d.textContent).toBe('hi');
     delete (globalThis as unknown as { document?: unknown }).document;
+  });
+});
+
+import { fillNavFallback } from './assistant';
+describe('go-mode keyword fallback', () => {
+  const lim = { regionIds: ['central-asia', 'KAZ', 'UZB', 'TKM', 'KGZ', 'TJK', 'AFG'], firstYear: 2000, lastYear: 2026, modes: ['harm', 'modis', 'viirs', 'naive', 'swipe'] };
+  it('fills mode from keywords', () => {
+    expect(fillNavFallback(null, 'show Kazakhstan 2015 to 2020 swipe', lim)).toEqual({ mode: 'swipe' });
+    expect(fillNavFallback({ area: 'KAZ' }, 'naive splice please', lim)).toEqual({ area: 'KAZ', mode: 'naive' });
+    expect(fillNavFallback(null, 'raw MODIS', lim)).toEqual({ mode: 'modis' }); expect(fillNavFallback(null, 'raw viirs counts', lim)).toEqual({ mode: 'viirs' });
+    expect(fillNavFallback(null, 'harmonised series', lim)).toEqual({ mode: 'harm' });
+    expect(fillNavFallback(null, 'make me a sandwich', lim)).toBeNull();
+  });
+  it('fills compare from "compare with | vs | versus <country>"', () => {
+    expect(fillNavFallback({ area: 'KAZ' }, 'show Kazakhstan compare with Tajikistan', lim)).toEqual({ area: 'KAZ', compare: 'TJK' });
+    expect(fillNavFallback(null, 'Uzbekistan vs. central asia', lim)).toEqual({ compare: 'central-asia' });
+    expect(fillNavFallback(null, 'Kazakhstan versus Kyrgyzstan swipe', lim)).toEqual({ compare: 'KGZ', mode: 'swipe' });
+    expect(fillNavFallback(null, 'compare with Atlantis', lim)).toBeNull();
+  });
+  it('never overrides what the backend returned', () => {
+    expect(fillNavFallback({ mode: 'viirs', compare: null }, 'swipe vs tajikistan', lim)).toEqual({ mode: 'viirs', compare: null });
   });
 });

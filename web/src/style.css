@@ -602,3 +602,22 @@ a.iconbtn { text-decoration: none; }
   .block.proof ul.insights li.tile { border-left: 0; border-top: 1px solid var(--line); } .block.proof ul.insights li.tile:first-child { border-top: 0; }
   .block.proof .tile .v, .block.proof .tile.harm .v { font-size: 30px; }
 }
+
+/* mobile fullscreen: one bottom component (timeline peek + details), empty capsules hidden */
+.fs-rail .cap:empty { display: none; }
+.rp-speed { display: none; min-width: 52px; }
+.fs-overlay[data-layout="mobile"] .fs-timeline { display: none; }
+.fs-overlay[data-layout="mobile"] .rp-speed { display: inline-flex; align-items: center; justify-content: center; }
+.fs-overlay[data-layout="mobile"] .fs-sheet .rp-spark, .fs-overlay[data-layout="mobile"] .fs-sheet .seg { display: none; }
+.fs-speek { padding: 0 10px 6px; flex: none; } .fs-speek .replay { background: transparent; border: 0; padding: 0; gap: 4px; }
+.fs-speek .rp-clock { font-size: 24px; } .fs-speek .rp-top { gap: 6px; } .fs-speek .rp-scrub { gap: 2px; }
+.fs-overlay[data-layout="mobile"] .fs-sheadhead { padding: 6px 12px 2px; } .fs-overlay[data-layout="mobile"] .csel-grab { margin: 2px auto 4px; }
+
+/* chat surfaces are opaque; translucency is for the map HUD only */
+:root { --scrim: rgba(5, 8, 12, .55); }
+@media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) { --scrim: rgba(10, 14, 20, .35); } }
+:root[data-theme="light"] { --scrim: rgba(10, 14, 20, .35); }
+.assist-drawer, .csel-sheet, .csel-sheet.info, .gloss-pop, .fresh-pop { background: var(--surface) !important; }
+.assist-drawer { box-shadow: 0 10px 40px rgba(0, 0, 0, .45); border: 1px solid var(--line); }
+.csel-backdrop { background: var(--scrim) !important; }
+.assist-scrim { position: fixed; inset: 0; z-index: 87; background: var(--scrim); }

@@ -81,10 +81,10 @@ function build(api: FsApi) {
   const ctx = el('div', 'fs-ctx'); ctx.append(spark, sparkCap, unH, top); br.body.append(ctx);
   bottom.append(bl.root, tm.root, br.root);
   // mobile sheet
-  const sheetWrap = el('div', 'fs-sheetwrap'); const sheet = el('div', 'fs-sheet'); const sh = el('div', 'fs-sheadhead'); sh.append(el('div', 'csel-grab'), el('div', 'fs-stitle', 'Details')); const sbody = el('div', 'fs-sbody'); sheet.append(sh, sbody); sheetWrap.append(sheet);
+  const sheetWrap = el('div', 'fs-sheetwrap'); const sheet = el('div', 'fs-sheet'); const sh = el('div', 'fs-sheadhead'); sh.append(el('div', 'csel-grab')); const speek = el('div', 'fs-speek'); const sbody = el('div', 'fs-sbody'); sheet.append(sh, speek, sbody); sheetWrap.append(sheet);
   hud.append(tl.root, rail, bottom, sheetWrap);
   ov.append(hud); document.body.append(ov);
-  return { sheetWrap, ov, hud, name, sel, figs, f1, f2, f3, fresh, tl, rail, c0, c2, bl, tm, br, exit, legendHome, replayHome, nrt, spark, sparkCap, top, ctx, sheet, sh, sbody, unH, panels: [tl.root, rail, bl.root, tm.root, br.root] };
+  return { speek, sheetWrap, ov, hud, name, sel, figs, f1, f2, f3, fresh, tl, rail, c0, c2, bl, tm, br, exit, legendHome, replayHome, nrt, spark, sparkCap, top, ctx, sheet, sh, sbody, unH, panels: [tl.root, rail, bl.root, tm.root, br.root] };
 }
 
 function drawBars(c: HTMLCanvasElement, b: NonNullable<HudData['bars']>): void {
@@ -124,15 +124,18 @@ function applyLayout(): void {
   const h = hudEls, l = fsLayout(innerWidth); overlay.dataset.layout = l;
   const mobile = l === 'mobile';
   const legend = $('maplegend'), layers = $('maplayers'), dim = $('dim-toggle'), replay = $('replay');
-  void replay;
   if (mobile) {
+    h.speek.append(replay); // one bottom component: the timeline is the sheet's peek, details open on drag up
     h.sbody.append(layers, h.figs, legend, h.nrt, h.ctx);
     h.tl.root.querySelector('.fs-phead')!.prepend(h.sel.closest('label')!); h.tl.root.querySelector('.fs-phead')!.append(h.exit);
   } else {
     h.bl.body.prepend(layers); h.c2.prepend(dim);
     h.tl.body.insertBefore(h.sel.closest('label')!, h.fresh); h.tl.body.insertBefore(h.figs, h.fresh); h.legendHome.append(legend); h.bl.body.append(h.nrt); h.br.body.append(h.ctx);
-    h.c0.append(h.exit);
+    h.c0.append(h.exit); h.replayHome.append(replay);
   }
+  // the rail starts 8 px below the phone top bar
+  const railTop = (): void => { h.rail.style.top = mobile ? `${Math.round(h.tl.root.getBoundingClientRect().bottom + 8)}px` : ''; };
+  railTop(); requestAnimationFrame(railTop); setTimeout(railTop, 250); // the top bar finishes its own layout after the select is enhanced
   if (mobile) setupSheet();
   apiRef?.resize();
   refreshHud();
@@ -142,22 +145,21 @@ function applyLayout(): void {
 let sheetCleanup: (() => void) | null = null;
 function setupSheet(): void {
   const h = hudEls!; sheetCleanup?.();
-  const sheet = h.sheet, head = h.sh;
-  const tmEl = h.tm.root;
-  const wrap = h.sheetWrap;
-  const H = (): number => Math.min(innerHeight * 0.62, 520);
-  const place = (): void => { wrap.style.bottom = `${tmEl.offsetHeight + 36}px`; wrap.style.height = `${H()}px`; };
+  const sheet = h.sheet, head = h.sh, wrap = h.sheetWrap;
+  const H = (): number => Math.min(innerHeight * 0.66, 540);
+  const peekVisible = (): number => head.offsetHeight + h.speek.offsetHeight + 6;
+  const place = (): void => { wrap.style.height = `${H()}px`; wrap.style.bottom = 'calc(36px + env(safe-area-inset-bottom))'; };
   place();
-  const peekY = (): number => H() - 72;
+  const peekY = (): number => Math.max(0, H() - peekVisible());
   let y = peekY(), drag: { sy: number; st: number; ly: number; lt: number; v: number } | null = null;
   const apply = (ty: number, anim: boolean): void => { y = ty; sheet.style.transition = anim && !reduce() ? 'transform 200ms cubic-bezier(.23,1,.32,1)' : 'none'; sheet.style.transform = `translateY(${ty}px)`; };
   apply(peekY(), false);
   const pm = (e: PointerEvent): void => { if (!drag) return; const now = performance.now(), dt = Math.max(1, now - drag.lt); drag.v = 0.8 * drag.v + 0.2 * ((e.clientY - drag.ly) / dt); drag.ly = e.clientY; drag.lt = now; apply(Math.max(0, Math.min(peekY(), drag.st + e.clientY - drag.sy)), false); };
-  const pu = (): void => { removeEventListener('pointermove', pm); removeEventListener('pointerup', pu); if (!drag) return; const v = drag.v; drag = null; const s = snapDecision({ y, defaultY: peekY(), closedY: H() + 200, velocity: v }); apply(s === 'expanded' ? 0 : peekY(), true); };
+  const pu = (): void => { removeEventListener('pointermove', pm); removeEventListener('pointerup', pu); if (!drag) return; const v = drag.v; drag = null; const sn = snapDecision({ y, defaultY: peekY(), closedY: H() + 200, velocity: v }); apply(sn === 'expanded' ? 0 : peekY(), true); };
   const pd = (e: PointerEvent): void => { e.preventDefault(); drag = { sy: e.clientY, st: y, ly: e.clientY, lt: performance.now(), v: 0 }; addEventListener('pointermove', pm); addEventListener('pointerup', pu); };
   head.addEventListener('pointerdown', pd);
   head.addEventListener('click', () => { if (!drag) apply(y > 8 ? 0 : peekY(), true); });
-  const ro = new ResizeObserver(place); ro.observe(tmEl);
+  const ro = new ResizeObserver(() => { place(); if (y > 0) apply(peekY(), false); }); ro.observe(h.speek);
   sheetCleanup = () => { head.removeEventListener('pointerdown', pd); ro.disconnect(); sheetCleanup = null; };
 }
 

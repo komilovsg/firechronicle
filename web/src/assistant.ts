@@ -1,12 +1,13 @@
-import { ask, buildAskBody, nav, detectLang, type Answer, type Lang, type NavAction, type NavLimits } from './lib/assistant';
+import { ask, buildAskBody, nav, detectLang, fillNavFallback, type Answer, type Lang, type NavAction, type NavLimits } from './lib/assistant';
 import { el } from './ui/dom';
 import { openInfoSheet } from './ui/sheet';
 import { mountPortal } from './ui/portal';
 import { createEmber, type Ember, type EmberState } from './ui/ember';
 
-/** API base of the SI assistant worker. Empty until the URL is known; when set, add its origin to the CSP connect-src. */
-export const ASSISTANT_URL = '';
+/** API base of the SI assistant worker (its origin is in the CSP connect-src). */
+export const ASSISTANT_URL = 'https://firechronicle-assistant.firechronicle-assistant.workers.dev';
 const CHIPS: string[] = ['What is a hotspot?', 'Why do MODIS and VIIRS differ?', 'Is this month normal here?', 'What does harmonized mean?', 'When is the fire season in this area?', 'How accurate is this data?'];
+const REASONS: Record<string, string> = { out_of_scope: 'I can only answer questions about fire data, satellites and this site.', not_in_base: 'This is not in the knowledge base.', unverified_number: 'I could not verify a number in that answer, so I will not give it.', limit: 'The question limit has been reached. Please try again later.', invalid: 'That question could not be used. Try rephrasing it.' };
 const INTRO = 'Hi, I\u2019m Ember. I watch NASA satellite fire data for Central Asia. I only answer from FireChronicle\u2019s data and documents, and I\u2019ll tell you when something isn\u2019t there.';
 let headerEmber: Ember | null = null, panelEmber: Ember | null = null;
 export const emberState = (s: EmberState): void => { headerEmber?.setState(s); panelEmber?.setState(s); };
@@ -16,6 +17,7 @@ export interface AssistantHost { areaName(): string; facts(): Record<string, unk
 type Msg = { role: 'user' | 'bot' | 'notice' | 'loading'; text: string; answer?: Answer };
 
 const state = { lang: 'en' as Lang, mode: 'ask' as 'ask' | 'go', msgs: [] as Msg[], busy: false, draft: '' };
+let scrim: HTMLElement | null = null;
 let host: AssistantHost, drawer: HTMLElement | null = null, closeSheet: (() => void) | null = null, active: { hello: HTMLElement; log: HTMLElement; input: HTMLInputElement; chips: HTMLElement; send: HTMLButtonElement; explain: HTMLButtonElement; notice: HTMLElement } | null = null, opener: HTMLElement | null = null;
 
 function renderLog(): void {
@@ -28,7 +30,7 @@ function renderLog(): void {
     else if (m.role === 'bot' && m.answer) {
       const a = m.answer;
       b.append(createEmber(20, true).el);
-      if (a.refused) { b.classList.add('refused'); b.append(el('p', 'rf', a.reason || 'Not in the knowledge base.')); if (a.answer) b.append(el('p', undefined, a.answer)); }
+      if (a.refused) { b.classList.add('refused'); b.append(el('p', 'rf', REASONS[a.reason ?? ''] ?? (a.reason || 'Not in the knowledge base.'))); if (a.answer) b.append(el('p', undefined, a.answer)); }
       else b.append(el('p', undefined, a.answer));
       if (a.sources.length) {
         const ul = el('ul', 'srcs'); ul.setAttribute('aria-label', 'Sources');
@@ -39,7 +41,8 @@ function renderLog(): void {
         }
         b.append(ul);
       }
-      const meta = [a.cached ? 'cached' : '', a.model ?? ''].filter(Boolean).join(' · ');
+      const debug = new URLSearchParams(location.search).has('debug'); // model name only for debugging
+      const meta = [a.cached ? 'cached' : '', debug ? (a.model ?? '') : ''].filter(Boolean).join(' · ');
       if (meta) b.append(el('p', 'meta', meta));
       b.append(el('p', 'disc', a.disclosure || DISCLOSURE_DEFAULT));
     } else b.textContent = m.text;
@@ -64,8 +67,9 @@ async function send(q: string, withArea = false): Promise<void> {
   if (state.mode === 'go' && !withArea) {
     const r = await nav(fetchImpl, ASSISTANT_URL, q, host.limits());
     if (!r.ok) return done({ role: 'notice', text: errText(r.error.kind, r.error.kind === 'rate' ? r.error.retryAfter : null) });
-    if (r.value.refused || !r.value.action) return done({ role: 'notice', text: 'I could not turn that into a view. Try naming an area, years or a calendar mode.' });
-    return done({ role: 'notice', text: host.apply(r.value.action) });
+    const act = fillNavFallback(r.value.action, q, host.limits());
+    if (!act || (r.value.refused && !r.value.action)) return done({ role: 'notice', text: 'I could not turn that into a view. Try naming an area, years or a calendar mode.' });
+    return done({ role: 'notice', text: host.apply(act) });
   }
   if (!withArea) state.lang = detectLang(q); // 'Explain this area' reuses the language of the last typed question
   const body = buildAskBody(q, state.lang, withArea ? { name: host.areaName(), facts: host.facts() } : undefined);
@@ -100,7 +104,7 @@ function build(): HTMLElement {
 }
 export function isAssistantOpen(): boolean { return !!drawer || !!closeSheet; }
 export function closeAssistant(): void {
-  if (drawer) { drawer.remove(); drawer = null; active = null; opener?.focus(); }
+  if (drawer) { drawer.remove(); scrim?.remove(); scrim = null; drawer = null; active = null; opener?.focus(); }
   if (closeSheet) { closeSheet(); closeSheet = null; active = null; }
 }
 export function toggleAssistant(from?: HTMLElement | null): void {
@@ -109,6 +113,7 @@ export function toggleAssistant(from?: HTMLElement | null): void {
   const root = build();
   if (matchMedia('(max-width: 640px)').matches) { closeSheet = openInfoSheet('Ask Ember', root, opener, { tall: true }); }
   else {
+    scrim = el('div', 'assist-scrim'); scrim.addEventListener('click', closeAssistant); mountPortal(scrim);
     drawer = el('aside', 'assist-drawer'); drawer.setAttribute('role', 'dialog'); drawer.setAttribute('aria-label', 'Ask Ember');
     const x = el('button', 'a-x', '×'); x.type = 'button'; x.setAttribute('aria-label', 'Close assistant'); x.addEventListener('click', closeAssistant);
     drawer.append(x, root); mountPortal(drawer);

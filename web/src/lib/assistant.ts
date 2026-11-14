@@ -90,5 +90,21 @@ export async function nav(fetchImpl: FetchLike, base: string, q: string, lim: Na
   if (!r.ok) return r;
   const o = r.value as Record<string, unknown> | null;
   if (!o || typeof o !== 'object') return { ok: false, error: { kind: 'bad' } };
-  return { ok: true, value: { action: validateAction(o.action, lim), refused: o.refused === true } };
+  // the live worker returns the view under `state`; `action` is the documented alias
+  return { ok: true, value: { action: validateAction(o.action ?? o.state, lim), refused: o.refused === true } };
+}
+
+const COUNTRIES: [RegExp, string][] = [[/central[\s-]*asia/, 'central-asia'], [/kazakhstan/, 'KAZ'], [/uzbekistan/, 'UZB'], [/turkmenistan/, 'TKM'], [/kyrgyzstan/, 'KGZ'], [/tajikistan/, 'TJK'], [/afghanistan/, 'AFG']];
+/** Fill calendar mode and compare area from the user's own words when the backend left them out (never overrides what it returned). */
+export function fillNavFallback(action: NavAction | null, text: string, lim: NavLimits): NavAction | null {
+  const t = text.toLowerCase(), out: NavAction = { ...(action ?? {}) };
+  if (out.mode === undefined) {
+    const mode = /\bswipe\b/.test(t) ? 'swipe' : /\bnaive\b/.test(t) ? 'naive' : /\braw\s+viirs\b|\bviirs\b/.test(t) ? 'viirs' : /\braw\s+modis\b|\bmodis\b/.test(t) ? 'modis' : /\bharmoni[sz]ed\b/.test(t) ? 'harm' : null;
+    if (mode && lim.modes.includes(mode)) out.mode = mode;
+  }
+  if (out.compare === undefined) {
+    const m = /(?:compare(?:d)?\s+(?:with|to)|\bvs\.?|\bversus)\s+([a-z][a-z\s-]*)/.exec(t);
+    if (m) for (const [re, id] of COUNTRIES) if (re.test(m[1]) && lim.regionIds.includes(id)) { out.compare = id; break; }
+  }
+  return Object.keys(out).length ? out : null;
 }

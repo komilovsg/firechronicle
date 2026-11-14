@@ -4,6 +4,7 @@ import type { Theme } from './theme';
 export class Replay {
   t = 0; playing = false; speed = 1;
   private tFirst = 0; private tLast = 0; private arr: Float64Array = new Float64Array(0);
+  private cycBtn: HTMLButtonElement | null = null;
   private lastSpark = 0;
   private acc = 0; private last = 0; private raf = 0;
   private clock!: HTMLElement; private range!: HTMLInputElement; private spark!: HTMLCanvasElement; private playBtn!: HTMLButtonElement;
@@ -19,8 +20,10 @@ export class Replay {
     this.playBtn = this.btn('Play', 'Play time-lapse', () => this.toggle());
     const prev = this.btn('‹', 'Previous month', () => this.step(-1)), next = this.btn('›', 'Next month', () => this.step(1));
     const seg = document.createElement('div'); seg.className = 'seg'; seg.setAttribute('role', 'group'); seg.setAttribute('aria-label', 'Replay speed');
-    [1, 2, 4].forEach((s) => { const b = this.btn(`${s}x`, `Speed ${s}x`, () => { this.speed = s; [...seg.children].forEach((c, i) => c.setAttribute('aria-pressed', String([1, 2, 4][i] === s))); }); b.setAttribute('aria-pressed', String(s === 1)); seg.append(b); });
-    top.append(this.clock, this.playBtn, prev, next, seg);
+    [1, 2, 4].forEach((s) => { const b = this.btn(`${s}x`, `Speed ${s}x`, () => { this.speed = s; if (this.cycBtn) { this.cycBtn.textContent = `${s}x`; this.cycBtn.setAttribute('aria-label', `Speed ${s}x. Change speed`); } [...seg.children].forEach((c, i) => c.setAttribute('aria-pressed', String([1, 2, 4][i] === s))); }); b.setAttribute('aria-pressed', String(s === 1)); seg.append(b); });
+    const cyc = this.btn('1x', 'Speed 1x. Change speed', () => { const nxt = [1, 2, 4][([1, 2, 4].indexOf(this.speed) + 1) % 3]; this.speed = nxt; cyc.textContent = `${nxt}x`; cyc.setAttribute('aria-label', `Speed ${nxt}x. Change speed`); [...seg.children].forEach((c, i) => c.setAttribute('aria-pressed', String([1, 2, 4][i] === nxt))); });
+    cyc.classList.add('rp-speed'); this.cycBtn = cyc;
+    top.append(this.clock, this.playBtn, prev, next, seg, cyc);
     const scrub = document.createElement('div'); scrub.className = 'rp-scrub';
     this.range = document.createElement('input'); this.range.type = 'range'; this.range.setAttribute('aria-label', 'Month scrubber');
     this.range.addEventListener('input', () => { this.pause(); this.setT(+this.range.value, true); });
