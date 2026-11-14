@@ -206,14 +206,14 @@ export function last24Option(arr: Float64Array, cl: Climatology, tLast: number, 
 }
 
 /** This year's cumulative total against the cumulative curves of the last 10 complete years (median line, P10-P90 band); NRT months dashed. */
-export function paceOption(p: import('./lib/outlook2').Pace, nrtMonth: number, th: Theme): Opt {
+export function paceOption(p: import('./lib/outlook2').Pace, nrtMonth: number, th: Theme, baseLbl = 'last 10 years'): Opt {
   const act = MONTH_ABBR.map((_, i) => (i < p.actual.length ? p.actual[i] : null));
   const k = Math.min(Math.max(nrtMonth, 1), 13);
   const solid = act.map((v, i) => (i < k - 1 ? v : null)), dashed = act.map((v, i) => (i >= k - 2 ? v : null));
   const none = { show: false };
   return {
     ...base(th), aria: { enabled: false },
-    legend: { data: [String(p.year), 'Median of last 10 years', 'P10–P90'], top: 0, left: 0, textStyle: { color: th.ink2, fontSize: 11 }, itemHeight: 8, itemWidth: 16 },
+    legend: { data: [String(p.year), `Median ${baseLbl}`, 'P10–P90'], top: 0, left: 0, textStyle: { color: th.ink2, fontSize: 11 }, itemHeight: 8, itemWidth: 16 },
     tooltip: { ...base(th).tooltip, trigger: 'axis', formatter: (ps: Opt[]) => { const i = ps[0].dataIndex; return `<b>Through ${MONTH_ABBR[i]}</b><br>${p.year}: ${act[i] === null ? 'n/a' : fmt(act[i] as number)}${i >= k - 1 && act[i] !== null ? ' (provisional)' : ''}<br>Median ${fmt(p.median[i])}<br>P10–P90 ${fmt(p.p10[i])}–${fmt(p.p90[i])}`; } },
     grid: { left: 56, right: 12, top: 30, bottom: 26 },
     xAxis: { type: 'category', data: MONTH_ABBR, boundaryGap: false, ...axisCommon(th), splitLine: { show: false } },
@@ -221,7 +221,7 @@ export function paceOption(p: import('./lib/outlook2').Pace, nrtMonth: number, t
     series: [
       { name: 'P10', type: 'line', stack: 'b', data: p.p10, symbol: 'none', lineStyle: { opacity: 0 }, silent: true, tooltip: none },
       { name: 'P10–P90', type: 'line', stack: 'b', data: p.p90.map((v, i) => v - p.p10[i]), symbol: 'none', lineStyle: { opacity: 0 }, areaStyle: { color: th.ink3, opacity: 0.25 }, silent: true, tooltip: none },
-      { name: 'Median of last 10 years', type: 'line', data: p.median, symbol: 'none', lineStyle: { width: 1.5, color: th.ink3, type: 'dotted' } },
+      { name: `Median ${baseLbl}`, type: 'line', data: p.median, symbol: 'none', lineStyle: { width: 1.5, color: th.ink3, type: 'dotted' } },
       { name: String(p.year), type: 'line', data: solid, symbol: 'circle', symbolSize: 5, lineStyle: { width: 2.2, color: th.ember }, itemStyle: { color: th.ember, borderColor: th.surface, borderWidth: 2 } },
       { name: `${p.year} (provisional)`, type: 'line', data: dashed, symbol: 'circle', symbolSize: 5, lineStyle: { width: 2.2, color: th.ember, type: 'dashed' }, itemStyle: { color: th.ember, borderColor: th.surface, borderWidth: 2 }, tooltip: none },
     ],

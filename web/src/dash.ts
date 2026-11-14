@@ -14,7 +14,7 @@ const fmt = (n: number): string => Math.round(n).toLocaleString('en-US');
 export interface Kpi { key: string; label: string; value: string; unit?: string; delta: Delta | null; deltaNote?: string; sub: string; spark: number[] | null; tone?: 'ok' | 'mute' }
 export interface DashModel {
   meta: Meta; areaName: string; dataThrough: string | null;
-  kpis: Kpi[]; rows: CountryRow[]; tableTitle: string; activeId: string | null;
+  kpis: Kpi[]; baseline: string; rows: CountryRow[]; tableTitle: string; activeId: string | null;
   sensors: SensorRow[];
 }
 export interface DashHandlers { openView: (v: string) => void; setArea: (id: string) => void }
@@ -103,8 +103,9 @@ export function renderTable(m: DashModel, h: DashHandlers): void {
   const tbl = el('table', 'dtbl'), cap = el('caption', 'sr', `${m.tableTitle}: this month against earlier years`);
   const thead = el('thead'), hr = el('tr');
   for (const [key, label, al] of SORTS) {
+    const lab2 = key === 'pct' ? `vs median (${m.baseline})` : key === 'ytd' ? `YTD vs median (${m.baseline})` : label;
     const th = el('th', al); th.scope = 'col'; th.setAttribute('aria-sort', sortKey === key ? (sortDir === 1 ? 'ascending' : 'descending') : 'none');
-    const b = el('button', 'sortbtn', label) as HTMLButtonElement; b.type = 'button';
+    const b = el('button', 'sortbtn', lab2) as HTMLButtonElement; b.type = 'button';
     b.append(el('span', 'arr', sortKey === key ? (sortDir === 1 ? ' ▲' : ' ▼') : ''));
     b.addEventListener('click', () => { if (sortKey === key) sortDir = (sortDir * -1) as 1 | -1; else { sortKey = key; sortDir = key === 'name' ? 1 : -1; } renderTable(m, h); (host.querySelector(`th:nth-child(${SORTS.findIndex((s) => s[0] === key) + 1}) button`) as HTMLElement | null)?.focus(); });
     th.append(b); hr.append(th);

@@ -7,7 +7,7 @@ import type * as ChartsMod from './charts';
 import type { Chart } from './charts';
 import type { Theme } from './theme';
 
-export interface OutlookCtx { arr: Float64Array; sp: Sp; tNrt: number; C: typeof ChartsMod; chart: (key: string, id: string) => Chart; th: Theme }
+export interface OutlookCtx { arr: Float64Array; sp: Sp; tNrt: number; C: typeof ChartsMod; chart: (key: string, id: string) => Chart; th: Theme; base: string; baseFull: string }
 const NOTE = 'Climatology, not a forecast.';
 
 function card(cls: string, title: string, caption: string, info: string): { root: HTMLElement; body: HTMLElement } {
@@ -39,7 +39,7 @@ export function renderOutlook2(host: HTMLElement, c: OutlookCtx): void {
     const med = monthStats(arr, sp, ly).median, t = timingFromCurve(med), peak = med.indexOf(Math.max(...med.filter(Number.isFinite)));
     if (o.next && i >= 0) { const a = MONTH_ABBR[o.next.from - 1], z = MONTH_ABBR[o.next.to - 1]; b.append(el('p', 'ol-big', `Next high-activity period: ${a === z ? a : `${a}–${z}`}`), el('p', 'ol-sub', i === 0 ? 'starts next month' : `in ${i + 1} months`)); }
     else b.append(el('p', 'ol-big', 'No month in the next 12 is likely to be high-activity'));
-    if (t) b.append(el('p', 'ol-text', `In a typical year activity starts in ${monthPhrase(t.start, MONTH_ABBR)}, peaks in ${MONTH_ABBR[peak]} and ends in ${monthPhrase(t.end, MONTH_ABBR)}. ${NOTE}`));
+    if (t) b.append(el('p', 'ol-text', `In a typical year (${c.base}) activity starts in ${monthPhrase(t.start, MONTH_ABBR)}, peaks in ${MONTH_ABBR[peak]} and ends in ${monthPhrase(t.end, MONTH_ABBR)}. ${NOTE}`));
   }
   // 2 next 3 months
   {
@@ -54,10 +54,10 @@ export function renderOutlook2(host: HTMLElement, c: OutlookCtx): void {
     const b = body('pace'), p = pace(arr, sp);
     let tx = host.querySelector<HTMLElement>('.ol-pace-text'); if (!tx) { tx = el('div', 'ol-pace-text'); b.append(tx, chartBox('ol-pace-chart', 'Cumulative total this year against the median of the last 10 years')); }
     tx.textContent = '';
-    if (p.proj && p.status) { tx.append(el('p', 'ol-big sm', `Projected year total: ${fmtTh(p.proj.lo)}–${fmtTh(p.proj.hi)} (median ${fmtTh(p.proj.med)})`), el('p', 'ol-sub', `On track for ${p.status === 'normal' ? 'a normal' : p.status === 'below' ? 'a below-normal' : 'an above-normal'} year`)); }
+    if (p.proj && p.status) { tx.append(el('p', 'ol-big sm', `Projected year total: ${fmtTh(p.proj.lo)}–${fmtTh(p.proj.hi)} (median ${fmtTh(p.proj.med)})`), el('p', 'ol-sub', `On track for ${p.status === 'normal' ? 'a normal' : p.status === 'below' ? 'a below-normal' : 'an above-normal'} year (vs ${c.base})`)); }
     else tx.append(el('p', 'ol-text', 'Not enough complete years for a projection.'));
     const nrtM = c.tNrt >= sp.tFirst && Math.floor(c.tNrt / 12) === Math.floor(sp.tLast / 12) ? (c.tNrt % 12) + 1 : c.tNrt < Math.floor(sp.tLast / 12) * 12 ? 1 : 13;
-    c.chart('olpace', 'ol-pace-chart').setOption(c.C.paceOption(p, nrtM, c.th), true);
+    c.chart('olpace', 'ol-pace-chart').setOption(c.C.paceOption(p, nrtM, c.th, c.base), true);
   }
   // 4 shift
   {

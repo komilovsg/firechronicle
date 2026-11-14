@@ -1243,3 +1243,4 @@ html[data-side="rail"] .side-row .side-credit, html[data-rail] .side-row .side-c
 .ol-skill { margin: auto 0 0; font: 600 13px var(--font-body); padding: 8px 10px; border-radius: 8px; border: 1px solid var(--line); } .ol-skill.weak { border-color: var(--viirs); } .ol-skill.good { border-color: var(--ok); }
 .ol-shift .chart, .ol-pace .chart { flex: 1 1 auto; min-height: 240px; }
 @media (max-width: 900px) { .ol-timing, .ol-next3, .ol-pace, .ol-shift, .ol-rel { grid-column: span 12; } }
+.dchip { white-space: normal; line-height: 1.3; text-align: left; }

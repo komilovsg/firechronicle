@@ -10,6 +10,7 @@ import { retryControl } from './ui/retryUi';
 import { createMapStatus, placeEmber, type MapStatus } from './ui/mapStatus';
 import { routeCheck } from './lib/route';
 import { renderOutlook2 } from './outlookUi';
+import { TERMS, addInfo } from './glossary';
 import { chunk, StaleBuildError } from './lib/chunk';
 import { cellToLatLng, cellToBoundary } from 'h3-js';
 import { loadMeta, loadRegions, loadCountries, loadCells, loadMonthly, loadPartial, loadRecent, type Countries, type Partial } from './data';
@@ -290,7 +291,7 @@ function renderCharts(): void {
   const tot = (a: Float64Array, y: number) => { let x = 0; for (let t = tFromYM(y, 1); t <= tFromYM(y, 12); t++) x += a[t]; return x; };
   $('ba-chart').setAttribute('aria-label', `Annual totals, naive splice versus harmonized. 2011: naive ${fmt(tot(s.naive, 2011))}, harmonized ${fmt(tot(s.harm, 2011))}. 2012: naive ${fmt(tot(s.naive, 2012))}, harmonized ${fmt(tot(s.harm, 2012))}.`);
   replay?.setData(harm, meta.t_first, meta.t_last, th); hudPing();
-  renderCompareView(); renderDash(); renderLast24(); renderOutlook2($('ol2'), { arr: harm, sp, tNrt: meta.t_nrt_from, C: C!, chart, th });
+  renderCompareView(); renderDash(); renderLast24(); defineBaselines(); renderOutlook2($('ol2'), { arr: harm, sp, tNrt: meta.t_nrt_from, C: C!, chart, th, base: baselines().recent, baseFull: baselines().recentFull });
 }
 
 function renderCompareView(): void {
@@ -810,17 +811,17 @@ function seriesOfRegion(r: Region): Series { let x = regionSeries.get(r.id); if 
 const last12 = (a: ArrayLike<number>): number[] => { const o: number[] = []; for (let t = meta.t_last - 11; t <= meta.t_last; t++) o.push(Number.isFinite(a[t]) ? a[t] : NaN); return o; };
 function dashKpis(): Kpi[] {
   const sp = { tFirst: meta.t_first, tLast: meta.t_last }, harm = series!.harm, out: Kpi[] = [];
-  const a = state.aoi;
+  const a = state.aoi, bl = baselines(), med = `vs ${bl.long} median`;
   if (recent) {
     const l7 = a.kind === 'region' ? last7(recent, a.id) : null;
-    if (l7) out.push({ key: 'l7', label: 'LAST 7 DAYS', value: fmt(l7.value), delta: deltaChip(l7.pct), deltaNote: 'vs median', sub: `normal for these days: ${fmt(l7.median)}`, spark: l7.harm.slice(-30) });
+    if (l7) out.push({ key: 'l7', label: 'LAST 7 DAYS', value: fmt(l7.value), delta: deltaChip(l7.pct), deltaNote: `vs ${(recent.baseline_years ?? bl.longFull).replace(/^(\d{4})\D+\d{2}(\d{2})$/, '$1\u2013$2')} median`, sub: `normal for these days: ${fmt(l7.median)}`, spark: l7.harm.slice(-30) });
     else if (a.kind !== 'region') out.push({ key: 'l7', label: 'LAST 7 DAYS', value: '\u2014', delta: null, sub: 'Last 7 days: region-level only', spark: null });
   }
   const tm = thisMonthStats(harm, state.y0, state.y1, sp, pdays(), partialHist());
-  if (tm) out.push({ key: 'tm', label: 'THIS MONTH', value: fmt(tm.value), delta: deltaChip(tm.pctVsMedian), deltaNote: 'vs median', sub: `${ordinal(tm.rank)} percentile \u00b7 ${MONTH_ABBR[tm.month - 1]}${tm.days < daysInMonth(tm.year, tm.month) ? ` so far (${tm.days} d)` : ''}`, spark: last12(harm) });
+  if (tm) out.push({ key: 'tm', label: 'THIS MONTH', value: fmt(tm.value), delta: deltaChip(tm.pctVsMedian), deltaNote: med, sub: `${ordinal(tm.rank)} percentile \u00b7 ${MONTH_ABBR[tm.month - 1]}${tm.days < daysInMonth(tm.year, tm.month) ? ` so far (${tm.days} d)` : ''}`, spark: last12(harm) });
   else out.push({ key: 'tm', label: 'THIS MONTH', value: '\u2014', delta: null, sub: 'not enough history', spark: null });
   const yt = ytdStats(harm, sp, state.y0, state.y1);
-  out.push(yt ? { key: 'ytd', label: 'YEAR TO DATE', value: fmt(yt.value), delta: deltaChip(yt.pct), deltaNote: 'vs median', sub: `Jan\u2013${MONTH_ABBR[yt.months - 1]} \u00b7 median ${fmt(yt.median)}`, spark: last12(harm) } : { key: 'ytd', label: 'YEAR TO DATE', value: '\u2014', delta: null, sub: 'not enough history', spark: null });
+  out.push(yt ? { key: 'ytd', label: 'YEAR TO DATE', value: fmt(yt.value), delta: deltaChip(yt.pct), deltaNote: med, sub: `Jan\u2013${MONTH_ABBR[yt.months - 1]} \u00b7 median ${fmt(yt.median)}`, spark: last12(harm) } : { key: 'ytd', label: 'YEAR TO DATE', value: '\u2014', delta: null, sub: 'not enough history', spark: null });
   const cl = climatology(harm, state.y0, state.y1, sp), now = nowDate();
   const ss = seasonStatus(detectSeason(cl.median), now.getUTCMonth() + 1, now.getUTCDate(), now.getUTCFullYear());
   out.push(ss ? { key: 'season', label: 'SEASON STATUS', value: ss.label, delta: null, sub: ss.sub, spark: cl.median.map((v) => (Number.isFinite(v) ? v : NaN)) } : { key: 'season', label: 'SEASON STATUS', value: '\u2014', delta: null, sub: 'no clear season', spark: null });
@@ -830,7 +831,7 @@ function dashKpis(): Kpi[] {
     ac = partial && partial.t_month === meta.t_last ? activeCells(index.m, mask, meta.t_last, partial) : null;
     if (ac) acv = fmt(ac.value); else { let n = 0; const m = index.m; for (let r = 0; r < m.c.length; r++) if (m.t[r] === meta.t_last && mask[m.c[r]] && m.harm[r] > 0) n++; acv = fmt(n); }
   }
-  out.push({ key: 'cells', label: 'ACTIVE CELLS', value: acv, delta: ac ? deltaChip(ac.pct) : null, deltaNote: 'vs median', sub: ac ? `H3 cells with detections \u00b7 median ${fmt(ac.median)}` : 'H3 cells with detections this month', spark: null });
+  out.push({ key: 'cells', label: 'ACTIVE CELLS', value: acv, delta: ac ? deltaChip(ac.pct) : null, deltaNote: med, sub: ac ? `H3 cells with detections \u00b7 median ${fmt(ac.median)}` : 'H3 cells with detections this month', spark: null });
   return out;
 }
 function dashRows(): CountryRow[] {
@@ -841,6 +842,16 @@ function dashRows(): CountryRow[] {
   };
   if (state.aoi.kind === 'region' && state.aoi.id === 'central-asia') return regions.filter((r) => r.id !== 'central-asia').map((r) => mk(r.id, r.name, seriesOfRegion(r), regionHist(partial, meta.t_last, r.id)));
   return [mk('', 'This area', series!, partialHist())];
+}
+/** Short and full baseline labels, from the data: the long-term window follows the selected years; the outlook window is the last 10 complete years. */
+function baselines(): { long: string; recent: string; longFull: string; recentFull: string } {
+  const ly = yearOf(meta.t_last) - 1, first = yearOf(meta.t_first) + (monthOf(meta.t_first) > 1 ? 1 : 0);
+  const a = Math.max(state.y0, first), b = Math.min(state.y1, ly), r0 = ly - 9, sh = (x: number, y: number): string => `${x}\u2013${String(y).slice(2)}`;
+  return { long: sh(a, b), recent: sh(r0, ly), longFull: `${a}\u2013${b}`, recentFull: `${r0}\u2013${ly}` };
+}
+function defineBaselines(): void {
+  const b = baselines(), h = headline(meta.validation);
+  TERMS.baselines = { title: 'Baselines', text: `Long-term comparisons (vs median, percentile, above or below normal) use ${b.longFull}. The outlook and the year pace use the last 10 complete years (${b.recentFull}), because fire activity in Central Asia has fallen by about half since the 2000s (harmonized change ${h.harm}, 2012\u201325 vs 2001\u201311).` };
 }
 let dashBuilt = false;
 let heroApi: { reopen: () => void; done: Promise<void> } | null = null;
@@ -863,8 +874,10 @@ function renderDash(): void {
     void chunk(() => import('./tour')).then((t) => t.setTourIntro(heroData().sentence));
     heroApi = mountHero(hr, heroData(), { explore: () => document.getElementById('d-status')?.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'start' }), watch: watchYears });
   }
-  const m: DashModel = { meta, areaName: aoiName, dataThrough: meta.data_through ?? meta.generated_at.slice(0, 10), kpis: dashKpis(), rows: dashRows(), tableTitle: state.aoi.kind === 'region' && state.aoi.id === 'central-asia' ? 'Countries' : 'This area', activeId: state.aoi.kind === 'region' ? state.aoi.id : null, sensors: sensorStatus(meta.sensors, meta.data_through ?? meta.generated_at.slice(0, 10)) };
+  const m: DashModel = { meta, areaName: aoiName, dataThrough: meta.data_through ?? meta.generated_at.slice(0, 10), kpis: dashKpis(), rows: dashRows(), baseline: baselines().long, tableTitle: state.aoi.kind === 'region' && state.aoi.id === 'central-asia' ? 'Countries' : 'This area', activeId: state.aoi.kind === 'region' ? state.aoi.id : null, sensors: sensorStatus(meta.sensors, meta.data_through ?? meta.generated_at.slice(0, 10)) };
+  defineBaselines();
   $('d-sub').textContent = `${aoiName}: latest activity and how it compares with normal.`;
+  addInfo($('d-sub'), 'baselines', 'Baselines');
   renderStatus(m); renderKpis(m);
   renderTable(m, { openView: (v) => setView(v as View, { push: true }), setArea: (id) => { cancelDraw(); state.aoi = { kind: 'region', id }; state.frameT = null; void refresh(); } });
   renderMinis();

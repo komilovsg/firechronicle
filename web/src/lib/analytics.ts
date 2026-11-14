@@ -171,7 +171,7 @@ export function buildSummary(inp: SummaryInput): string[] {
   const tm = thisMonthStats(arr, y0, y1, sp, inp.partialDays, inp.partialHist);
   if (tm) {
     const share = tm.days < daysInMonth(tm.year, tm.month) ? ` so far (${tm.days} days)` : '';
-    out.push(`${MONTH_FULL[tm.month - 1]} ${tm.year}${share}: ${fmtN(tm.value)} detections${Number.isFinite(tm.rank) ? `, ${ordinal(tm.rank)} percentile` : ''}.`);
+    out.push(`${MONTH_FULL[tm.month - 1]} ${tm.year}${share}: ${fmtN(tm.value)} detections${Number.isFinite(tm.rank) ? `, ${ordinal(tm.rank)} percentile vs ${tm.histYears.length ? `${tm.histYears[0]}\u2013${tm.histYears[tm.histYears.length - 1]}` : 'earlier years'}` : ''}.`);
   }
   return out;
 }
