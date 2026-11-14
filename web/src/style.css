@@ -1211,3 +1211,5 @@ html[data-side="rail"] .side-row .team-mark, html[data-rail] .side-row .team-mar
 html[data-side="rail"] .side-row .side-credit, html[data-rail] .side-row .side-credit { left: 48px; width: auto; top: 12px; opacity: 0; }
 .team-svg.inl { vertical-align: -2px; color: var(--ink-2); }
 .team-name { white-space: nowrap; }
+
+.h2-lab b { white-space: nowrap; } .h2-lab.chk b { font-size: clamp(18px, 1.9vw, 28px); }

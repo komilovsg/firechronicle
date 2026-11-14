@@ -6,6 +6,7 @@ import { el } from './ui/dom';
 import { openInfoSheet } from './ui/sheet';
 import { mountPortal } from './ui/portal';
 import { addInfo } from './glossary';
+import { retryControl } from './ui/retryUi';
 import { createEmber, type Ember, type EmberState } from './ui/ember';
 
 /** API base of the SI assistant worker (its origin is in the CSP connect-src). */
@@ -27,7 +28,7 @@ export interface AssistantHost {
   regionData(iso: string | null): RegionData | null; validation(): unknown;
   openCalendar(iso: string): void; shareCard(iso: string): Promise<void>;
 }
-type Msg = { role: 'user' | 'bot' | 'notice' | 'loading' | 'error'; text: string; answer?: Answer; dm?: DataModule | null; vchips?: { k: string; v: string }[]; iso?: string | null; topic?: string; retry?: { q: string; withArea: boolean } | null };
+type Msg = { role: 'user' | 'bot' | 'notice' | 'loading' | 'error'; text: string; answer?: Answer; dm?: DataModule | null; vchips?: { k: string; v: string }[]; iso?: string | null; topic?: string; retry?: { q: string; withArea: boolean; tries?: number; auto?: boolean } | null };
 
 const state = { lang: 'en' as Lang, mode: 'ask' as 'ask' | 'go', msgs: [] as Msg[], busy: false, draft: '', link: 'ok' as 'ok' | 'err' };
 let scrim: HTMLElement | null = null;
@@ -159,7 +160,9 @@ function answerCard(m: Msg): HTMLElement {
   return col;
 }
 
+let activeRetry: { destroy: () => void } | null = null;
 function renderLog(): void {
+  activeRetry?.destroy(); activeRetry = null;
   if (!active) return;
   const { log, hello, sugs } = active; log.textContent = '';
   const empty = state.msgs.length === 0; hello.hidden = !empty; log.hidden = empty;
@@ -173,7 +176,8 @@ function renderLog(): void {
     }
     if (m.role === 'error') {
       row.append(avatar('error')); const col = el('div', 'mc-col'); const c = el('div', 'mc-card err'); c.append(el('div', 'mc-chead', '▲ LINK ISSUE'), el('p', 'mc-body', m.text));
-      if (m.retry) { const rq = m.retry; c.append(mcBtn('[RETRY]', () => { state.msgs = state.msgs.filter((x) => x !== m); const i = state.msgs.length - 1; if (state.msgs[i]?.role === 'user') state.msgs.pop(); void send(rq.q, rq.withArea); })); }
+      if (m.retry && m.retry.auto !== false && m === state.msgs[state.msgs.length - 1]) { const rq = m.retry; activeRetry = retryControl(c, { attempts: rq.tries ?? 0, run: () => { state.msgs = state.msgs.filter((x) => x !== m); const i = state.msgs.length - 1; if (state.msgs[i]?.role === 'user') state.msgs.pop(); void send(rq.q, rq.withArea, (rq.tries ?? 0) + 1); return true; } }); }
+      else if (m.retry) { const rq = m.retry; c.append(mcBtn('[RETRY]', () => { state.msgs = state.msgs.filter((x) => x !== m); const i = state.msgs.length - 1; if (state.msgs[i]?.role === 'user') state.msgs.pop(); void send(rq.q, rq.withArea, rq.tries); })); }
       col.append(c); row.append(col); log.append(row); continue;
     }
     const a = m.answer!;
@@ -217,12 +221,12 @@ function errText(kind: string, retry: number | null): string {
 }
 const fetchImpl = (u: string, i: { method: string; headers: Record<string, string>; body: string }) => fetch(u, i);
 
-async function send(q: string, withArea = false): Promise<void> {
+async function send(q: string, withArea = false, tries = 0): Promise<void> {
   q = q.trim(); if (!q || state.busy) return;
   state.msgs.push({ role: 'user', text: q }, { role: 'loading', text: '' }); state.draft = ''; if (active) { active.input.value = ''; autosize(); }
   setBusy(true); renderLog(); emberState('thinking');
   const done = (m: Msg): void => { state.msgs = state.msgs.filter((x) => x.role !== 'loading'); state.msgs.push(m); state.link = m.role === 'error' ? 'err' : 'ok'; setBusy(false); renderLog(); renderTelemetry(); emberState(m.role === 'bot' ? (m.answer?.refused ? 'refused' : 'answered') : m.role === 'notice' ? 'answered' : 'error'); };
-  const fail = (kind: string, retryAfter: number | null): void => done({ role: 'error', text: errText(kind, retryAfter), retry: kind === 'unconfigured' ? null : { q, withArea } });
+  const fail = (kind: string, retryAfter: number | null): void => done({ role: 'error', text: errText(kind, retryAfter), retry: kind === 'unconfigured' ? null : { q, withArea, tries, auto: kind !== 'rate' } });
   if (state.mode === 'go' && !withArea) {
     const r = await nav(fetchImpl, ASSISTANT_URL, q, host.limits());
     if (!r.ok) return fail(r.error.kind, r.error.kind === 'rate' ? r.error.retryAfter : null);
