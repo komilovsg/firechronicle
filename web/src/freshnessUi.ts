@@ -1,3 +1,4 @@
+import { nowDate } from './lib/clock';
 import { formatCountdown, freshness, nextRun, parseRefresh, shortCountdown, type FreshState, type Refresh } from './lib/freshness';
 import type { Meta } from './lib/series';
 import { openInfoSheet } from './ui/sheet';
@@ -35,7 +36,7 @@ export function initFreshness(meta: Meta): void {
   digits.textContent = '';
   for (let i = 0; i < 8; i++) { const c = document.createElement('span'); c.textContent = '0'; digits.append(c); }
   const dc = [...digits.children] as HTMLElement[];
-  let target = nextRun(new Date(), refresh.schedule_utc), phase: 'wait' | 'updating' = 'wait', pollUntil = 0, nextPoll = 0, toasted = false, last = '';
+  let target = nextRun(nowDate(), refresh.schedule_utc), phase: 'wait' | 'updating' = 'wait', pollUntil = 0, nextPoll = 0, toasted = false, last = '';
   const banner = q('fresh-banner');
 
   const setDigits = (txt: string): void => { if (txt === last) return; for (let i = 0; i < 8; i++) if (txt[i] !== last[i]) { dc[i].textContent = txt[i]; dc[i].classList.remove('tick'); void dc[i].offsetWidth; dc[i].classList.add('tick'); } last = txt; };
@@ -51,7 +52,7 @@ export function initFreshness(meta: Meta): void {
     try {
       const r = await fetch(`./data/meta.json?ts=${Date.now()}`, { cache: 'no-store' }); if (!r.ok) return;
       const m = (await r.json()) as { generated_at?: string };
-      if (m.generated_at && m.generated_at !== loaded) { toast(); phase = 'wait'; target = nextRun(new Date(), refresh.schedule_utc); }
+      if (m.generated_at && m.generated_at !== loaded) { toast(); phase = 'wait'; target = nextRun(nowDate(), refresh.schedule_utc); }
     } catch { /* offline: try again later */ }
   };
   const showBanner = (state: FreshState): void => {
@@ -65,7 +66,7 @@ export function initFreshness(meta: Meta): void {
   };
   let shownState: FreshState | null = null;
   const tick = (): void => {
-    const now = new Date(), f = freshness(now, through, refresh);
+    const now = nowDate(), f = freshness(now, through, refresh);
     pill.dataset.state = f.state;
     if (shownState !== f.state) { shownState = f.state; showBanner(f.state); }
     let cdText: string | null = null, shortT: string, updating = false;
@@ -87,7 +88,7 @@ export function initFreshness(meta: Meta): void {
     else { digits.hidden = true; label.textContent = `Next attempt ${refresh.schedule_utc} UTC`; }
     q('fr-main').textContent = f.state === 'fresh' ? 'Updated daily from NASA FIRMS' : f.state === 'stale' ? 'Data may be delayed' : 'Updates ended';
     const ago = f.daysOld === null ? '' : f.daysOld <= 0 ? 'today' : f.daysOld === 1 ? 'yesterday' : `${f.daysOld} d ago`;
-    q('fr-short').textContent = `${f.state === 'fresh' ? `Updated ${ago || 'recently'}` : f.state === 'stale' ? 'Data delayed' : 'Updates ended'} · ${f.state === 'fresh' && !updating ? `next in ${shortT}` : shortT}`;
+    q('fr-short').textContent = f.state === 'ended' ? 'Updates ended' : `${f.state === 'fresh' ? `Updated ${ago || 'recently'}` : 'Data delayed'} \u00b7 ${f.state === 'fresh' && !updating ? `next in ${shortT}` : shortT}`;
     const t = f.state === 'fresh' ? target : nextRun(now, refresh.schedule_utc);
     pill.title = `Next update: ${t.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })} (your time) · ${t.toISOString().slice(0, 16).replace('T', ' ')} UTC`;
     for (const cb of subs) cb({ state: f.state, updating, countdown: cdText, short: shortT });

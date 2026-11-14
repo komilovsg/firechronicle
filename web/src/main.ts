@@ -5,8 +5,8 @@ import { CellIndex, seriesFromRegion, sensorTs, type Meta, type Region, type Ser
 import { circlePolygon, bboxOf, geometryPolys, pointInPolys, type Poly, type Pt } from './lib/geo';
 import { encodeHash, parseHash, MAX_VERTS, type AoiSpec, type CalMode } from './lib/hash';
 import { MONTH_FULL, MONTH_ABBR, daysInMonth, monthOf, tFromYM, tLabel, yearOf } from './lib/time';
-import { percentile } from './lib/stats';
-import { anomalies, annualTotals, buildSummary, climatology, ordinal, outlook, outlookText, thisMonthStats, type Mode } from './lib/analytics';
+import { median, percentile } from './lib/stats';
+import { detectSeason, monthRanges, anomalies, annualTotals, buildSummary, climatology, ordinal, outlook, outlookText, thisMonthStats, type Mode } from './lib/analytics';
 import type * as ChartsMod from './charts';
 import type { Chart } from './charts';
 import type { FireMap } from './map';
@@ -16,6 +16,9 @@ import { SEQ, gradientCss, onThemeChange, prefersDark, theme, themeMode, applyTh
 import { fmtInt } from './lib/format';
 import { enhanceAll } from './ui/select';
 import { initFreshness } from './freshnessUi';
+import { initAssistant } from './assistant';
+import { openStylePanel, refreshStylePanel, type BmApi } from './basemap';
+import { BM_IDS, imageryDateFor, addDays, clampImageryDate, parseBm, type BmId } from './lib/gibs';
 import type { FsApi, HudData } from './fullscreen';
 import { parseRefresh } from './lib/freshness';
 import { encodeCmp, parseCmp } from './lib/cmp';
@@ -37,6 +40,7 @@ let series: Series | null = null;
 let monthVmax = 1;
 let fireMap: FireMap | undefined, replay: Replay | undefined;
 let partial: Partial | null = null;
+let bm: BmId = 'mono', imgManual: string | null = null, imgKey = '', lastImgSync = 0, imgTimer = 0;
 let cmp: AoiSpec | null = null, cmpSeries: Series | null = null, cmpName = '';
 let mapMode: 'activity' | 'anomaly' = 'activity';
 let anom: CellAnomaly | null = null, anomT = 0;
@@ -401,6 +405,7 @@ function renderAnomalyLayer(): void {
   lg.append(g);
 }
 function renderMap(): void {
+  syncImagery();
   if (mapMode === 'anomaly') { renderAnomalyLayer(); return; }
   fireMap?.setMode('activity');
   if (!index || !aoiCells.length || !replay) return;
@@ -433,7 +438,7 @@ function syncControls(): void {
   if (state.aoi.kind === 'circle') { $<HTMLInputElement>('c-lat').value = String(state.aoi.lat); $<HTMLInputElement>('c-lon').value = String(state.aoi.lon); $<HTMLInputElement>('c-r').value = String(state.aoi.r); }
 }
 function writeHash(): void {
-  try { history.replaceState(null, '', encodeHash({ aoi: state.aoi, y0: state.y0, y1: state.y1, mode: state.mode }) + (cmp ? '&' + encodeCmp(cmp) : '')); } catch { /* sandboxed */ }
+  try { history.replaceState(null, '', encodeHash({ aoi: state.aoi, y0: state.y0, y1: state.y1, mode: state.mode }) + (cmp ? '&' + encodeCmp(cmp) : '') + (bm !== 'mono' ? `&bm=${bm}` : '')); } catch { /* sandboxed */ }
 }
 function applyHash(): void {
   const h = parseHash(location.hash);
@@ -443,6 +448,7 @@ function applyHash(): void {
   }
   if (h.y0 !== undefined && h.y1 !== undefined) { state.y0 = Math.max(2000, h.y0); state.y1 = Math.min(lastYear, h.y1); if (state.y0 > state.y1) { state.y0 = 2000; state.y1 = lastYear; } }
   if (h.mode) state.mode = h.mode;
+  const hb = parseBm(location.hash); if (hb) bm = hb; else { try { const v = localStorage.getItem('fc-bm'); if (v && (BM_IDS as readonly string[]).includes(v)) bm = v as BmId; } catch { /* ignore */ } }
   const c = parseCmp(location.hash);
   cmp = c && !(c.kind === 'region' && !regions.some((r) => r.id === (c as { id: string }).id)) ? c : null;
 }
@@ -626,6 +632,7 @@ function ensureVisuals(): Promise<void> {
     replay.onFrame = (t) => { state.frameT = t; renderMap(); if (!replay!.playing) renderCalendar(); };
     replay.onStop = () => { renderCalendar(); renderMap(); };
     fireMap.onResetClick = () => fitMap();
+    setupBasemap();
     fireMap.onDrift = (d) => { document.querySelectorAll('[data-reset]').forEach((x) => x.classList.toggle('drifted', d)); };
     fireMap.onDrawClick = (p) => { if (draft.length >= MAX_VERTS) { msg(`At most ${MAX_VERTS} points.`); return; } draft.push(p); fireMap!.setDraft(draft); ($('draw-finish') as HTMLButtonElement).disabled = draft.length < 3; };
     fireMap.onDrawFinish = () => { if (draft.length > 3) draft.pop(); finishDraw(); };
@@ -672,13 +679,83 @@ function fsApi(): FsApi {
     flyTo: (lo, la) => { setMapMode('anomaly'); fireMap?.flyTo(lo, la, 7); },
     resetView: () => fitMap(), resize: () => fireMap?.map.resize(),
     zoom: (d) => { if (d > 0) fireMap?.map.zoomIn(); else fireMap?.map.zoomOut(); },
-    toggleTheme: () => $('theme-btn').click(),
+    toggleTheme: () => $('theme-btn').click(), openStyle,
   };
 }
 async function toggleFs(): Promise<void> {
   try { await ensureVisuals(); const m = await import('./fullscreen'); await m.toggleFullscreen(fsApi()); } catch (e) { setStatus(`Could not open fullscreen (${(e as Error).message}).`); }
 }
 const hudPing = (): void => { window.dispatchEvent(new Event('fc-hud')); };
+const bmKey = (): string => `${state.frameT ?? 'p'}|${mapMode}`;
+/** Satellite day follows the calendar month / replay frame; throttled to one update per 1.5 s while playing. */
+function syncImagery(force = false): void {
+  if (bm !== 'sat' || !fireMap) return;
+  const key = bmKey(); if (key !== imgKey) { imgKey = key; imgManual = null; }
+  const run = (): void => { lastImgSync = performance.now(); fireMap?.setImageryDate(imageryDateFor(mapMode === 'anomaly' ? null : state.frameT, new Date(), imgManual)); refreshStylePanel(); };
+  const wait = 1500 - (performance.now() - lastImgSync);
+  if (force || !replay?.playing || wait <= 0) { clearTimeout(imgTimer); run(); } else { clearTimeout(imgTimer); imgTimer = window.setTimeout(run, wait); }
+}
+function setBm(id: BmId): void {
+  bm = id; try { localStorage.setItem('fc-bm', id); } catch { /* private mode */ }
+  imgKey = bmKey(); imgManual = null;
+  fireMap?.setBasemap(id, imageryDateFor(mapMode === 'anomaly' ? null : state.frameT, new Date(), null));
+  writeHash(); refreshStylePanel();
+}
+function bmApi(): BmApi {
+  const cur = (): string => imageryDateFor(mapMode === 'anomaly' ? null : state.frameT, new Date(), imgManual);
+  return {
+    current: () => bm, select: setBm, imagery: () => fireMap?.imagery() ?? null,
+    step: (d) => { imgManual = clampImageryDate(addDays(cur(), d), new Date()); fireMap?.setImageryDate(imgManual); },
+    canStep: (d) => clampImageryDate(addDays(cur(), d), new Date()) !== cur(),
+  };
+}
+const openStyle = (anchor: HTMLElement): void => openStylePanel(anchor, bmApi());
+function setupBasemap(): void {
+  const labels = { type: 'FeatureCollection', features: countries.features.map((f) => {
+    const polys = geometryPolys(f.geometry as { type: string; coordinates: unknown }), ring = polys.map((p) => p[0]).reduce((x, y) => (y.length > x.length ? y : x));
+    const b = bboxOf(ring); return { type: 'Feature', properties: { name: f.properties.name }, geometry: { type: 'Point', coordinates: [(b[0] + b[2]) / 2, (b[1] + b[3]) / 2] } };
+  }) };
+  fireMap!.setCountries(countries, labels);
+  fireMap!.onStyleClick = openStyle;
+  fireMap!.onStyleChange = () => { renderMap(); hudPing(); };
+  if (bm !== 'mono') setBm(bm);
+}
+function assistantFacts(): Record<string, unknown> {
+  const sp = { tFirst: meta.t_first, tLast: meta.t_last };
+  const tm = series ? thisMonthStats(series.harm, state.y0, state.y1, sp, pdays(), partialHist()) : null;
+  const o = series ? outlook(series.harm, sp) : null, yt = series ? ytdStats(series.harm, sp, state.y0, state.y1) : null;
+  const cl = series ? climatology(series.harm, state.y0, state.y1, sp) : null, season = cl ? detectSeason(cl.median) : null;
+  const at = series ? annualTotals(series.harm, state.y0, state.y1, sp) : [];
+  const last = at[at.length - 1], med = at.length ? median(at.map((a) => a.total)) : NaN;
+  const r1 = (v: number | undefined): number | null => (v !== undefined && Number.isFinite(v) ? Math.round(v * 10) / 10 : null);
+  return {
+    this_month: tm ? `${MONTH_FULL[tm.month - 1]} ${tm.year}` : null,
+    this_month_vs_median_pct: tm ? r1(tm.pctVsMedian) : null,
+    this_month_percentile: tm ? r1(tm.rank) : null,
+    next_high_activity: o?.next ? `${MONTH_ABBR[o.next.from - 1]}${o.next.from === o.next.to ? '' : '-' + MONTH_ABBR[o.next.to - 1]}` : null,
+    ytd_vs_median_pct: yt ? r1(yt.pct) : null,
+    latest_year: last ? last.year : null,
+    latest_year_total: last ? Math.round(last.total) : null,
+    latest_year_vs_median_pct: last && med > 0 ? r1((last.total / med - 1) * 100) : null,
+    season_months: season ? monthRanges(season.months).join(', ') : null,
+    season_peak: season ? MONTH_ABBR[season.peak - 1] : null,
+    years_from: state.y0, years_to: state.y1,
+    data_through: meta.data_through ?? null,
+  };
+}
+const MODES = ['harm', 'modis', 'viirs', 'naive', 'swipe'];
+function assistantApply(a: import('./lib/assistant').NavAction): string {
+  const parts: string[] = [];
+  if (a.area) { state.aoi = { kind: 'region', id: a.area }; parts.push(`area ${regions.find((r) => r.id === a.area)?.name ?? a.area}`); }
+  if (a.yearFrom !== undefined) state.y0 = a.yearFrom;
+  if (a.yearTo !== undefined) state.y1 = a.yearTo;
+  if (state.y0 > state.y1) { if (a.yearFrom !== undefined) state.y1 = Math.max(state.y0, state.y1); else state.y0 = state.y1; }
+  if (a.yearFrom !== undefined || a.yearTo !== undefined) parts.push(`years ${state.y0}\u2013${state.y1}`);
+  if (a.mode) { state.mode = a.mode as CalMode; parts.push(`calendar: ${MODE_LABEL[state.mode]}`); }
+  if (a.compare !== undefined) { cmp = a.compare ? { kind: 'region', id: a.compare } : null; parts.push(a.compare ? `compare with ${regions.find((r) => r.id === a.compare)?.name ?? a.compare}` : 'compare off'); }
+  state.frameT = null; void refresh(); syncControls();
+  return `Applied: ${parts.join(', ')}.`;
+}
 const CITATION = 'Deep Space AI (2026). FireChronicle: harmonized MODIS\u2013VIIRS active fire calendar for Central Asia, 2000\u20132026. https://komilovsg.github.io/firechronicle/. Data: NASA FIRMS.';
 async function copyText(t: string, btn: HTMLElement, ok: string, label: string): Promise<void> {
   let done = false;
@@ -738,6 +815,7 @@ async function boot(): Promise<void> {
   initFreshness(meta); $('badge-nrt').hidden = false;
   renderHeroText(); renderInsights(); renderProof();
   wireControls(); wireExtras(); renderMethod();
+  initAssistant({ areaName: () => aoiName, facts: assistantFacts, apply: assistantApply, limits: () => ({ regionIds: regions.map((r) => r.id), firstYear: 2000, lastYear, modes: MODES }) });
   $<HTMLDetailsElement>('method').addEventListener('toggle', () => { if ($<HTMLDetailsElement>('method').open) void ensureExplainer(); });
   applyHash(); syncControls();
   void ensureVisuals().catch((e) => setStatus(`Could not load the map and charts (${(e as Error).message}).`, () => { visuals = null; void refresh(); }));

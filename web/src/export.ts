@@ -19,7 +19,7 @@ export function seriesCsv(s: Series, y0: number, y1: number, tFirst: number, tLa
 export interface PointsResult { csv: string; rows: number; missing: number[] }
 /** Stream points/{year}.csv.gz, keep rows whose H3 cell is in the AOI and whose date is in range. */
 export async function pointsCsv(cells: Set<string>, res: number, y0: number, y1: number, onProgress: (done: number, total: number, rows: number) => void): Promise<PointsResult> {
-  const header = 'date,time,lat,lon,satellite,instrument,confidence,frp,daynight,type,processing'.split(',');
+  const header = 'date,time,lat,lon,satellite,instrument,confidence,frp,daynight,type,processing,country'.split(',');
   const out: string[] = [csvRow(header)], missing: number[] = [];
   const lo = `${y0}-01-01`, hi = `${y1}-12-31`, total = y1 - y0 + 1;
   for (let y = y0; y <= y1; y++) {
@@ -39,7 +39,7 @@ export async function pointsCsv(cells: Set<string>, res: number, y0: number, y1:
       const lat = Number(f[2]), lon = Number(f[3]);
       if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
       if (!cells.has(latLngToCell(lat, lon, res))) return;
-      out.push(csvRow(f.slice(0, 11)));
+      out.push(csvRow([...f.slice(0, 11), f[11] ?? '']));  // country: ISO3, empty in older files
     };
     for (;;) {
       const { done, value } = await reader.read();

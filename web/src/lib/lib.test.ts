@@ -402,3 +402,75 @@ describe('view drift', () => {
     expect(hasDrifted({ ...def, center: [67, 52] }, def, 800, 600)).toBe(true);
   });
 });
+
+import { addDays, clampImageryDate, gibsProduct, imageryDateFor, isIsoDate, monthMid, parseBm, tileUrl, RELIEF, NIGHT } from './gibs';
+import { parseNow } from './clock';
+describe('gibs and clock', () => {
+  it('product by date', () => {
+    expect(gibsProduct('2021-08-15').layer).toBe('VIIRS_NOAA20_CorrectedReflectance_TrueColor');
+    expect(gibsProduct('2018-01-05').layer).toContain('NOAA20'); expect(gibsProduct('2018-01-04').layer).toContain('SNPP');
+    expect(gibsProduct('2015-11-24').layer).toContain('SNPP'); expect(gibsProduct('2015-11-23').layer).toContain('MODIS_Terra');
+    expect(gibsProduct('2005-08-15').maxzoom).toBe(9);
+  });
+  it('tile urls', () => {
+    expect(tileUrl(gibsProduct('2021-08-15'))).toBe('https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/VIIRS_NOAA20_CorrectedReflectance_TrueColor/default/2021-08-15/GoogleMapsCompatible_Level9/{z}/{y}/{x}.jpg');
+    expect(tileUrl(RELIEF)).toBe('https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/ASTER_GDEM_Color_Shaded_Relief/default/GoogleMapsCompatible_Level12/{z}/{y}/{x}.jpg');
+    expect(tileUrl(NIGHT)).toContain('/VIIRS_Black_Marble/default/2016-01-01/GoogleMapsCompatible_Level8/{z}/{y}/{x}.png');
+  });
+  it('dates: clamp, month mid, sync rule', () => {
+    const now = new Date('2026-11-15T10:00:00Z');
+    expect(clampImageryDate('1999-01-01', now)).toBe('2000-02-24'); expect(clampImageryDate('2030-01-01', now)).toBe('2026-11-14');
+    expect(monthMid(260)).toBe('2021-09-15'); expect(addDays('2021-12-31', 1)).toBe('2022-01-01'); expect(addDays('2021-03-01', -1)).toBe('2021-02-28');
+    expect(imageryDateFor(null, now, null)).toBe('2026-11-14'); expect(imageryDateFor(260, now, null)).toBe('2021-09-15');
+    expect(imageryDateFor(322, now, null)).toBe('2026-11-14'); // 15 Nov is in the future -> latest day
+    expect(imageryDateFor(260, now, '2021-09-16')).toBe('2021-09-16'); expect(imageryDateFor(260, now, 'garbage')).toBe('2021-09-15');
+    expect(isIsoDate('2021-02-30')).toBe(false); expect(isIsoDate('2021-02-28')).toBe(true);
+  });
+  it('bm hash and now param are validated', () => {
+    expect(parseBm('#a=KAZ&bm=sat')).toBe('sat'); expect(parseBm('#bm=evil')).toBeNull(); expect(parseBm('#a=KAZ')).toBeNull();
+    expect(parseNow('?now=2026-11-20')?.toISOString()).toBe('2026-11-20T12:00:00.000Z');
+    expect(parseNow('?now=2026-13-40')).toBeNull(); expect(parseNow('?now=x')).toBeNull(); expect(parseNow('?now=2026-02-30')).toBeNull(); expect(parseNow('')).toBeNull();
+  });
+});
+
+import { ask, buildAskBody, nav, parseAskResponse, sanitizeFacts, validateAction } from './assistant';
+describe('assistant contracts', () => {
+  const lim = { regionIds: ['central-asia', 'KAZ', 'TJK'], firstYear: 2000, lastYear: 2026, modes: ['harm', 'modis', 'viirs', 'naive', 'swipe'] };
+  it('facts: key pattern, count cap, value types', () => {
+    const raw: Record<string, unknown> = { good_key: 1, 'Bad Key': 2, ok2: 'x', nul: null, nan: NaN, obj: { a: 1 }, long: 'y'.repeat(500), '': 1, ['k'.repeat(41)]: 1 };
+    const f = sanitizeFacts(raw);
+    expect(Object.keys(f).sort()).toEqual(['good_key', 'long', 'nul', 'ok2']); expect((f.long as string).length).toBe(200);
+    const many: Record<string, unknown> = {}; for (let i = 0; i < 60; i++) many['k' + i] = i;
+    expect(Object.keys(sanitizeFacts(many)).length).toBe(40);
+    expect(buildAskBody('  hi  ', 'ru', { name: 'Kazakhstan', facts: { a_b: 1 } })).toEqual({ q: 'hi', lang: 'ru', area: { name: 'Kazakhstan', facts: { a_b: 1 } } });
+    expect(buildAskBody('q', 'en').area).toBeUndefined();
+  });
+  it('answer parsing: sources, refusal, bad shapes', () => {
+    const a = parseAskResponse({ answer: 'text <b>x</b>', refused: false, sources: [{ title: 'T', section: 'S', url: 'https://x.org/a' }, { title: 'U', section: '', url: 'javascript:alert(1)' }, { nope: 1 }], model: 'm', cached: true, disclosure: 'SI answer' })!;
+    expect(a.answer).toBe('text <b>x</b>'); expect(a.sources).toEqual([{ title: 'T', section: 'S', url: 'https://x.org/a' }, { title: 'U', section: '', url: '' }]); expect(a.cached).toBe(true); expect(a.disclosure).toBe('SI answer');
+    const r = parseAskResponse({ refused: true, reason: 'not in the knowledge base', answer: '', sources: [] })!; expect(r.refused).toBe(true); expect(r.reason).toContain('knowledge base');
+    expect(parseAskResponse(null)).toBeNull(); expect(parseAskResponse({ foo: 1 })).toBeNull(); expect(parseAskResponse('x')).toBeNull();
+  });
+  it('nav action validation', () => {
+    expect(validateAction({ area: 'KAZ', yearFrom: 2010, yearTo: 2020, mode: 'naive', compare: 'TJK' }, lim)).toEqual({ area: 'KAZ', yearFrom: 2010, yearTo: 2020, mode: 'naive', compare: 'TJK' });
+    expect(validateAction({ area: 'XXX', yearFrom: 2030, mode: 'evil', compare: '<x>' }, lim)).toBeNull();
+    expect(validateAction({ yearFrom: 2020, yearTo: 2010 }, lim)).toBeNull();
+    expect(validateAction({ compare: null }, lim)).toEqual({ compare: null });
+    expect(validateAction({ yearFrom: 1999.5 }, lim)).toBeNull(); expect(validateAction('x', lim)).toBeNull();
+  });
+  const resp = (status: number, body: unknown, headers: Record<string, string> = {}) => async () => ({ ok: status >= 200 && status < 300, status, headers: { get: (n: string) => headers[n.toLowerCase()] ?? null }, json: async () => body });
+  it('api client with a mocked fetch', async () => {
+    const ok = await ask(resp(200, { answer: 'hi', refused: false, sources: [] }), 'https://api.example/', { q: 'q', lang: 'en' });
+    expect(ok.ok && ok.value.answer).toBe('hi');
+    const rate = await ask(resp(429, {}, { 'retry-after': '30' }), 'https://api.example', { q: 'q', lang: 'en' });
+    expect(rate).toEqual({ ok: false, error: { kind: 'rate', retryAfter: 30 } });
+    expect(await ask(resp(500, {}), 'https://api.example', { q: 'q', lang: 'en' })).toEqual({ ok: false, error: { kind: 'bad' } });
+    expect(await ask(async () => { throw new TypeError('offline'); }, 'https://api.example', { q: 'q', lang: 'en' })).toEqual({ ok: false, error: { kind: 'network' } });
+    expect(await ask(resp(200, { weird: true }), 'https://api.example', { q: 'q', lang: 'en' })).toEqual({ ok: false, error: { kind: 'bad' } });
+    expect(await ask(resp(200, {}), '', { q: 'q', lang: 'en' })).toEqual({ ok: false, error: { kind: 'unconfigured' } });
+    const n = await nav(resp(200, { action: { area: 'TJK', yearFrom: 2005, mode: 'bogus' }, refused: false }), 'https://api.example', 'show tajikistan from 2005', lim);
+    expect(n.ok && n.value).toEqual({ action: { area: 'TJK', yearFrom: 2005 }, refused: false });
+    const nr = await nav(resp(200, { refused: true }), 'https://api.example', 'make me a sandwich', lim);
+    expect(nr.ok && nr.value).toEqual({ action: null, refused: true });
+  });
+});

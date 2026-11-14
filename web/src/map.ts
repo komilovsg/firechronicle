@@ -4,9 +4,11 @@ import { cellToBoundary } from 'h3-js';
 import { SEQ } from './theme';
 import type { Pt } from './lib/geo';
 import { hasDrifted, type View } from './lib/viewDrift';
+import { gibsProduct, tileUrl, RELIEF, NIGHT, type BmId, type Product } from './lib/gibs';
 
 maplibregl.setWorkerUrl(new URL('./maplibre/maplibre-gl-worker.mjs', document.baseURI).href);
-const STYLE = { light: 'https://tiles.openfreemap.org/styles/positron', dark: 'https://tiles.openfreemap.org/styles/dark' };
+const GLYPHS = 'https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf';
+const STYLE = { color: 'https://tiles.openfreemap.org/styles/liberty', light: 'https://tiles.openfreemap.org/styles/positron', dark: 'https://tiles.openfreemap.org/styles/dark' };
 type FC = { type: 'FeatureCollection'; features: { type: 'Feature'; properties: { i: number; n: number; v: number; ac: string; an: number }; geometry: { type: 'Polygon'; coordinates: number[][][] } }[] };
 const empty: FC = { type: 'FeatureCollection', features: [] };
 
@@ -19,9 +21,16 @@ export class FireMap {
   private dark: boolean;
   private pitch3d = true;
   private mode: 'activity' | 'anomaly' = 'activity';
+  bm: BmId = 'mono';
+  private imgDate = '';
+  private product: Product | null = null;
+  private borders: unknown = { type: 'FeatureCollection', features: [] };
+  private labels: unknown = { type: 'FeatureCollection', features: [] };
+  onStyleChange: (() => void) | null = null;
   private def: View | null = null;
   onDrift: ((d: boolean) => void) | null = null;
   onResetClick: (() => void) | null = null;
+  onStyleClick: ((anchor: HTMLElement) => void) | null = null;
   onDrawClick: ((p: Pt) => void) | null = null;
   onDrawFinish: (() => void) | null = null;
   drawing = false;
@@ -29,7 +38,7 @@ export class FireMap {
 
   constructor(el: HTMLElement, dark: boolean, pitch3d: boolean) {
     this.dark = dark; this.pitch3d = pitch3d;
-    this.map = new maplibregl.Map({ container: el, style: dark ? STYLE.dark : STYLE.light, center: [67, 45], zoom: 3, pitch: pitch3d ? 45 : 0, bearing: pitch3d ? -10 : 0, attributionControl: { compact: true }, maxPitch: 70 });
+    this.map = new maplibregl.Map({ container: el, style: dark ? STYLE.dark : STYLE.light, transformStyle: ((_p: unknown, n: unknown) => this.merge(n as never)) as never, center: [67, 45], zoom: 3, pitch: pitch3d ? 45 : 0, bearing: pitch3d ? -10 : 0, attributionControl: { compact: true }, maxPitch: 70 });
     this.map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'top-right');
     const self = this;
     this.map.addControl({
@@ -42,36 +51,82 @@ export class FireMap {
       },
       onRemove() { /* control lives as long as the map */ },
     }, 'top-right');
+    this.map.addControl({
+      onAdd() {
+        const c = document.createElement('div'); c.className = 'maplibregl-ctrl maplibregl-ctrl-group';
+        const b = document.createElement('button'); b.type = 'button'; b.className = 'ctrl-style'; b.setAttribute('aria-label', 'Map style'); b.title = 'Map style';
+        b.setAttribute('aria-haspopup', 'dialog'); b.addEventListener('click', () => self.onStyleClick?.(b));
+        c.append(b); return c;
+      },
+      onRemove() { /* lives with the map */ },
+    }, 'top-right');
     this.map.on('move', () => this.checkDrift());
-    this.map.on('style.load', () => this.addLayers());
     this.map.on('click', (e) => { if (this.drawing) this.onDrawClick?.([e.lngLat.lng, e.lngLat.lat]); });
     this.map.on('dblclick', (e) => { if (this.drawing) { e.preventDefault(); this.onDrawFinish?.(); } });
     this.ready = new Promise((res) => this.map.once('load', () => res()));
   }
   private src(id: string): maplibregl.GeoJSONSource | undefined { return this.map.getSource(id) as maplibregl.GeoJSONSource | undefined; }
-  private addLayers(): void {
-    const m = this.map, d = this.dark;
-    const ink = d ? '#c9d4e2' : '#2a3441';
-    m.addSource('hex', { type: 'geojson', data: this.fc });
-    m.addSource('shape', { type: 'geojson', data: this.shapeData() });
-    m.addSource('draft', { type: 'geojson', data: this.draftData() });
-    const stops: unknown[] = [];
-    SEQ.forEach((c, i) => stops.push(i / (SEQ.length - 1), c));
-    m.addLayer({ id: 'hex-base', type: 'line', source: 'hex', paint: { 'line-color': ink, 'line-opacity': 0.14, 'line-width': 0.5 } });
-    m.addLayer({ id: 'hex-3d', type: 'fill-extrusion', source: 'hex', filter: ['>', ['get', 'n'], 0], paint: {
-      'fill-extrusion-color': ['interpolate', ['linear'], ['get', 'n'], ...stops] as never,
-      'fill-extrusion-height': ['*', ['get', 'n'], this.height] as never, 'fill-extrusion-opacity': d ? 0.92 : 0.88, 'fill-extrusion-vertical-gradient': true } });
-    m.addLayer({ id: 'hex-anom', type: 'fill-extrusion', source: 'hex', filter: ['>', ['get', 'an'], 0], paint: {
-      'fill-extrusion-color': ['get', 'ac'] as never, 'fill-extrusion-height': ['*', ['get', 'an'], this.height] as never, 'fill-extrusion-opacity': d ? 0.92 : 0.9, 'fill-extrusion-vertical-gradient': true } });
-    this.applyMode();
-    m.addLayer({ id: 'shape-line', type: 'line', source: 'shape', paint: { 'line-color': d ? '#ff7d33' : '#b94a07', 'line-width': 2 } });
-    m.addLayer({ id: 'draft-line', type: 'line', source: 'draft', paint: { 'line-color': '#ff7d33', 'line-width': 2, 'line-dasharray': [2, 1] } });
-    m.addLayer({ id: 'draft-pts', type: 'circle', source: 'draft', filter: ['==', '$type', 'Point'], paint: { 'circle-radius': 4, 'circle-color': '#ff7d33', 'circle-stroke-width': 1.5, 'circle-stroke-color': '#fff' } });
+  private bright(): boolean { return this.bm === 'mono' ? this.dark : this.bm !== 'color'; }
+  /** Our sources and layers, rebuilt from class state so every basemap switch keeps them (and keeps them on top). */
+  private merge(next: { sources?: Record<string, unknown>; layers?: unknown[] }): never {
+    const d = this.dark, bright = this.bright(), sat = this.bm === 'sat';
+    const stops: unknown[] = []; SEQ.forEach((c, i) => stops.push(i / (SEQ.length - 1), c));
+    const vis = (m: 'activity' | 'anomaly') => ({ visibility: this.mode === m ? 'visible' : 'none' });
+    const op = sat ? 0.85 : d ? 0.92 : 0.88;
+    const layers: unknown[] = [
+      { id: 'hex-base', type: 'line', source: 'hex', paint: { 'line-color': bright ? '#ffffff' : '#2a3441', 'line-opacity': bright && this.bm !== 'mono' ? 0.22 : 0.14, 'line-width': 0.5 } },
+      { id: 'hex-3d', type: 'fill-extrusion', source: 'hex', layout: vis('activity'), filter: ['>', ['get', 'n'], 0], paint: { 'fill-extrusion-color': ['interpolate', ['linear'], ['get', 'n'], ...stops], 'fill-extrusion-height': ['*', ['get', 'n'], this.height], 'fill-extrusion-opacity': op, 'fill-extrusion-vertical-gradient': true } },
+      { id: 'hex-anom', type: 'fill-extrusion', source: 'hex', layout: vis('anomaly'), filter: ['>', ['get', 'an'], 0], paint: { 'fill-extrusion-color': ['get', 'ac'], 'fill-extrusion-height': ['*', ['get', 'an'], this.height], 'fill-extrusion-opacity': op, 'fill-extrusion-vertical-gradient': true } },
+      { id: 'shape-line', type: 'line', source: 'shape', paint: { 'line-color': bright || d ? '#ff7d33' : '#b94a07', 'line-width': 2.5 } },
+      { id: 'draft-line', type: 'line', source: 'draft', paint: { 'line-color': '#ff7d33', 'line-width': 2, 'line-dasharray': [2, 1] } },
+      { id: 'draft-pts', type: 'circle', source: 'draft', filter: ['==', '$type', 'Point'], paint: { 'circle-radius': 4, 'circle-color': '#ff7d33', 'circle-stroke-width': 1.5, 'circle-stroke-color': '#ffffff' } },
+    ];
+    return { ...next, sources: { ...(next.sources ?? {}), hex: { type: 'geojson', data: this.fc }, shape: { type: 'geojson', data: this.shapeData() }, draft: { type: 'geojson', data: this.draftData() } }, layers: [...(next.layers ?? []), ...layers] } as never;
   }
+  /** Raster basemaps (satellite, relief, night) are plain style objects with our country borders and labels. */
+  private rasterStyle(prod: Product, attribution: string, night: boolean): unknown {
+    return {
+      version: 8, glyphs: GLYPHS,
+      sources: { bm: { type: 'raster', tiles: [tileUrl(prod)], tileSize: 256, maxzoom: prod.maxzoom, attribution }, borders: { type: 'geojson', data: this.borders }, clabels: { type: 'geojson', data: this.labels } },
+      layers: [
+        { id: 'bg', type: 'background', paint: { 'background-color': night ? '#000000' : '#0b0f14' } },
+        { id: 'bm-raster', type: 'raster', source: 'bm' },
+        { id: 'borders', type: 'line', source: 'borders', paint: { 'line-color': '#ffffff', 'line-opacity': 0.6, 'line-width': 0.9 } },
+        { id: 'country-labels', type: 'symbol', source: 'clabels', layout: { 'text-field': ['get', 'name'], 'text-font': ['Noto Sans Regular'], 'text-size': 12, 'text-letter-spacing': 0.06, 'text-transform': 'uppercase' }, paint: { 'text-color': '#ffffff', 'text-opacity': 0.85, 'text-halo-color': 'rgba(0,0,0,0.75)', 'text-halo-width': 1.4 } },
+      ],
+    };
+  }
+  setCountries(borders: unknown, labels: unknown): void { this.borders = borders; this.labels = labels; if (this.bm === 'sat' || this.bm === 'relief' || this.bm === 'night') this.applyBasemap(); }
+  /** Switch the basemap; camera, pitch, hex layer, outline and anomaly mode all stay. */
+  setBasemap(id: BmId, imageryDate?: string): void {
+    this.bm = id; if (imageryDate) this.imgDate = imageryDate;
+    this.applyBasemap();
+  }
+  private applyBasemap(): void {
+    let style: unknown;
+    this.product = null;
+    if (this.bm === 'mono') style = this.dark ? STYLE.dark : STYLE.light;
+    else if (this.bm === 'color') style = STYLE.color;
+    else if (this.bm === 'relief') style = this.rasterStyle(RELIEF, 'Relief: NASA GIBS / EOSDIS \u00b7 ASTER GDEM', false);
+    else if (this.bm === 'night') style = this.rasterStyle(NIGHT, 'Night lights: NASA GIBS / EOSDIS \u00b7 VIIRS Black Marble', true);
+    else { this.product = gibsProduct(this.imgDate); style = this.rasterStyle(this.product, `Imagery: NASA GIBS / EOSDIS \u00b7 ${this.product.label} true colour, ${this.imgDate}`, false); }
+    this.map.setStyle(style as never, { diff: false, transformStyle: ((_p: unknown, n: unknown) => this.merge(n as never)) } as never);
+    this.map.once('style.load', () => this.onStyleChange?.());
+  }
+  /** Change the satellite day. Same product: swap tiles in place; different product: rebuild the basemap. */
+  setImageryDate(date: string): void {
+    if (this.bm !== 'sat' || date === this.imgDate) return;
+    this.imgDate = date;
+    const prod = gibsProduct(date);
+    const srcObj = this.map.getSource('bm') as unknown as { setTiles?: (t: string[]) => void } | undefined;
+    if (this.product && prod.layer === this.product.layer && srcObj?.setTiles) { this.product = prod; srcObj.setTiles([tileUrl(prod)]); }
+    else this.applyBasemap();
+  }
+  imagery(): { date: string; label: string } | null { return this.bm === 'sat' ? { date: this.imgDate, label: gibsProduct(this.imgDate).label } : null; }
   setDark(dark: boolean): void {
     if (dark === this.dark) return;
     this.dark = dark;
-    this.map.setStyle(dark ? STYLE.dark : STYLE.light);
+    if (this.bm === 'mono') this.applyBasemap();
   }
   setHexes(cells: { idx: number; id: string }[], heightM: number): void {
     this.height = heightM;

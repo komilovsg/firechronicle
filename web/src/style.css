@@ -416,3 +416,43 @@ html.fs-on, html.fs-on body { overflow: hidden; }
 a.iconbtn { text-decoration: none; }
 @media (max-width: 768px) { .iconbtn { width: 40px; height: 40px; } }
 @media (max-height: 1000px) { .fs-overlay[data-layout="mid"] .fs-context { display: none; } }
+
+/* map style panel */
+.maplibregl-ctrl-group .ctrl-style { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 20 20' fill='none' stroke='%23333' stroke-width='1.6' stroke-linejoin='round'%3E%3Cpath d='M10 3 2.5 7 10 11l7.5-4z'/%3E%3Cpath d='m2.5 10.5 7.5 4 7.5-4'/%3E%3Cpath d='m2.5 14 7.5 4 7.5-4'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: center; }
+.bm-pop { position: fixed; z-index: 85; background: var(--glass-bg, var(--surface)); -webkit-backdrop-filter: blur(14px) saturate(140%); backdrop-filter: blur(14px) saturate(140%); border: 1px solid var(--glass-line, var(--line)); border-radius: var(--r2); box-shadow: 0 10px 40px rgba(0, 0, 0, .35); padding: 12px; color: var(--ink); }
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) { .bm-pop { background: color-mix(in srgb, var(--surface) 94%, transparent); } }
+.bm-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); gap: 8px; }
+.bm-card { all: unset; box-sizing: border-box; cursor: pointer; display: grid; gap: 2px; padding: 6px; border: 1px solid var(--line); border-radius: var(--r2); background: var(--surface-2); }
+.bm-card:hover { border-color: var(--ink-3); } .bm-card:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+.bm-card[aria-checked="true"] { border-color: var(--ember); box-shadow: 0 0 0 2px var(--ember); }
+.bm-thumb { display: block; height: 52px; border-radius: 5px; border: 1px solid rgba(0, 0, 0, .15); }
+.bm-label { font: 600 13px var(--font-body); margin-top: 4px; } .bm-note { font: 400 11px var(--font-body); color: var(--ink-2); }
+.bm-sat { margin-top: 10px; display: grid; gap: 6px; } .bm-row { display: flex; align-items: center; gap: 8px; }
+.bm-info { flex: 1; text-align: center; font: 500 12px var(--font-mono); font-variant-numeric: tabular-nums; } .bm-hint { font-size: 11.5px; color: var(--ink-2); }
+.sheet-body .bm-panel { padding-bottom: 8px; }
+
+.hdr-actions { margin-left: auto; } .brandrow .badges { order: 3; flex-basis: 100%; margin-left: 0; }
+
+/* SI assistant */
+.askbtn { min-height: 34px; border-radius: 99px; padding: 0 14px; font-weight: 600; border-color: var(--ember); color: var(--ember); background: var(--ember-soft); }
+.askbtn:hover:not(:disabled) { background: var(--ember-soft); filter: brightness(1.1); }
+.assist-drawer { position: fixed; right: 12px; top: 12px; bottom: 12px; width: min(420px, calc(100vw - 24px)); z-index: 88; background: var(--glass-bg, var(--surface)); -webkit-backdrop-filter: blur(14px) saturate(140%); backdrop-filter: blur(14px) saturate(140%); border: 1px solid var(--glass-line, var(--line)); border-radius: var(--r2); box-shadow: 0 10px 40px rgba(0, 0, 0, .35); display: flex; flex-direction: column; padding: 14px; color: var(--ink); }
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) { .assist-drawer { background: color-mix(in srgb, var(--surface) 94%, transparent); } }
+.a-x { all: unset; position: absolute; right: 8px; top: 8px; width: 36px; height: 36px; display: grid; place-items: center; font-size: 24px; cursor: pointer; color: var(--ink-2); border-radius: 50%; } .a-x:focus-visible { outline: 2px solid var(--focus); }
+.assist { display: flex; flex-direction: column; gap: 10px; min-height: 0; flex: 1; }
+.assist-drawer .assist { height: 100%; } .sheet-body .assist { max-height: 72dvh; }
+.a-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding-right: 36px; flex-wrap: wrap; } .a-head h2 { font-size: 17px; }
+.a-note { font-size: 12.5px; padding: 8px 10px; border: 1px dashed var(--ember); border-radius: var(--r1); background: var(--ember-soft); }
+.a-log { flex: 1; min-height: 120px; overflow-y: auto; display: grid; gap: 8px; align-content: start; overscroll-behavior: contain; }
+.am { padding: 9px 11px; border-radius: 10px; font-size: 14px; line-height: 1.45; max-width: 92%; overflow-wrap: anywhere; }
+.am.user { justify-self: end; background: var(--ember-soft); border: 1px solid color-mix(in srgb, var(--ember) 40%, transparent); }
+.am.bot { background: var(--surface-2); border: 1px solid var(--line); } .am.notice, .am.loading { color: var(--ink-2); font-size: 13px; background: transparent; border: 1px dashed var(--line); }
+.am.refused { border-style: dashed; color: var(--ink-2); } .am .rf { font-weight: 600; color: var(--ink); }
+.am p + p, .am .srcs { margin-top: 6px; } .srcs { padding-left: 16px; font-size: 12.5px; display: grid; gap: 2px; } .srcs a { color: var(--focus); }
+.am .meta { font: 400 11px var(--font-mono); color: var(--ink-3); } .am .disc { font-size: 11.5px; font-style: italic; color: var(--ink-3); }
+.a-chips { display: flex; flex-wrap: wrap; gap: 6px; } .chip { font: 500 12.5px var(--font-body); padding: 7px 11px; border-radius: 99px; border: 1px solid var(--line); background: var(--surface-2); color: var(--ink); cursor: pointer; text-align: left; } .chip:hover { border-color: var(--ink-3); } .chip:focus-visible { outline: 2px solid var(--focus); }
+.a-form { display: flex; gap: 8px; } .a-form input { flex: 1; min-width: 0; font-size: 16px; }
+.a-foot { font-size: 11px; color: var(--ink-3); }
+
+.method li, .method a, .method p { overflow-wrap: anywhere; }
+@media (max-width: 560px) { .ask-long { display: none; } .askbtn { padding: 0 14px; min-height: 40px; } }

@@ -13,7 +13,7 @@ export interface HudData {
 }
 export interface FsApi {
   getHud(): HudData; flyTo(lon: number, lat: number): void; resetView(): void; zoom(d: 1 | -1): void; resize(): void;
-  mainSelect: HTMLSelectElement; toggleTheme(): void;
+  mainSelect: HTMLSelectElement; toggleTheme(): void; openStyle(anchor: HTMLElement): void;
 }
 const KEY = 'fc-fs-collapsed';
 const loadCollapsed = (): string[] => { try { const v = JSON.parse(localStorage.getItem(KEY) ?? '[]'); return Array.isArray(v) ? v.filter((x) => typeof x === 'string') : []; } catch { return []; } };
