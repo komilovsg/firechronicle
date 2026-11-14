@@ -1,4 +1,5 @@
 import { snapDecision } from './selectLogic';
+import { lockableBody, mountPortal } from './portal';
 const reduce = (): boolean => matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 /** Simple bottom sheet for short content (phones). Drag the header down (or flick) to close; Esc and backdrop also close. */
@@ -13,15 +14,15 @@ export function openInfoSheet(title: string, body: HTMLElement, returnFocus?: HT
   const x = document.createElement('button'); x.type = 'button'; x.className = 'csel-x'; x.setAttribute('aria-label', 'Close'); x.textContent = '×';
   row.append(t, x); head.append(grab, row);
   const content = document.createElement('div'); content.className = 'sheet-body'; content.append(body);
-  sheet.append(head, content); root.append(backdrop, sheet); document.body.append(root);
-  const scrollY = window.scrollY, b = document.body.style, prev = { p: b.position, t: b.top, w: b.width };
-  b.position = 'fixed'; b.top = `-${scrollY}px`; b.width = '100%';
+  sheet.append(head, content); root.append(backdrop, sheet); mountPortal(root);
+  const lock = lockableBody(), scrollY = window.scrollY, b = document.body.style, prev = { p: b.position, t: b.top, w: b.width };
+  if (lock) { b.position = 'fixed'; b.top = `-${scrollY}px`; b.width = '100%'; }
   const H = sheet.offsetHeight; let y = H, closed = false;
   const apply = (ty: number, anim: boolean): void => { y = ty; sheet.style.transition = anim && !reduce() ? 'transform 200ms cubic-bezier(.23,1,.32,1)' : 'none'; sheet.style.transform = `translateY(${ty}px)`; backdrop.style.opacity = String(Math.max(0, 1 - ty / H)); };
   sheet.style.transform = `translateY(${H}px)`; requestAnimationFrame(() => requestAnimationFrame(() => apply(0, true)));
   const close = (): void => {
     if (closed) return; closed = true;
-    apply(H, true); b.position = prev.p; b.top = prev.t; b.width = prev.w; scrollTo(0, scrollY);
+    apply(H, true); if (lock) { b.position = prev.p; b.top = prev.t; b.width = prev.w; scrollTo(0, scrollY); }
     setTimeout(() => root.remove(), reduce() ? 0 : 210); removeEventListener('keydown', onKey, true); returnFocus?.focus();
   };
   let drag: { sy: number; st: number; ly: number; lt: number; v: number } | null = null;

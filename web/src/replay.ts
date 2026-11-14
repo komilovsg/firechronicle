@@ -4,6 +4,7 @@ import type { Theme } from './theme';
 export class Replay {
   t = 0; playing = false; speed = 1;
   private tFirst = 0; private tLast = 0; private arr: Float64Array = new Float64Array(0);
+  private lastSpark = 0;
   private acc = 0; private last = 0; private raf = 0;
   private clock!: HTMLElement; private range!: HTMLInputElement; private spark!: HTMLCanvasElement; private playBtn!: HTMLButtonElement;
   private reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -44,7 +45,8 @@ export class Replay {
     this.range.setAttribute('aria-valuetext', tLabel(this.t));
     this.clock.textContent = '';
     this.clock.append(`${MONTH_ABBR[monthOf(this.t) - 1]} ${yearOf(this.t)}`);
-    this.drawSpark();
+    const now = performance.now();
+    if (!this.playing || now - this.lastSpark > 100) { this.lastSpark = now; this.drawSpark(); } // the cursor redraws at most 10 Hz while playing
     if (emit) this.onFrame(this.t);
   }
   step(d: number): void { this.pause(); this.setT(this.t + d, true); }

@@ -1,3 +1,4 @@
+import { lockableBody, mountPortal } from './portal';
 import { edgeIndex, nextIndex, snapDecision, typeaheadIndex, type Snap } from './selectLogic';
 
 /**
@@ -136,7 +137,7 @@ export function enhanceSelect(sel: HTMLSelectElement): void {
 
   /* ---------- desktop popover ---------- */
   function openPopover(list: HTMLElement) {
-    const root = document.createElement('div'); root.className = 'csel-pop'; root.append(list); document.body.append(root);
+    const root = document.createElement('div'); root.className = 'csel-pop'; root.append(list); mountPortal(root);
     const place = (): void => {
       const r = btn.getBoundingClientRect(), vw = innerWidth, vh = innerHeight;
       const w = Math.max(r.width, 160); root.style.minWidth = `${w}px`;
@@ -172,11 +173,11 @@ export function enhanceSelect(sel: HTMLSelectElement): void {
     const x = document.createElement('button'); x.type = 'button'; x.className = 'csel-x'; x.setAttribute('aria-label', 'Close'); x.textContent = '×';
     row.append(title, x); head.append(grab, row);
     list.tabIndex = 0;
-    sheet.append(head, list); root.append(backdrop, sheet); document.body.append(root);
+    sheet.append(head, list); root.append(backdrop, sheet); mountPortal(root);
 
     // lock body scroll
-    const scrollY = scrollY_(); const b = document.body.style;
-    const prev = { pos: b.position, top: b.top, w: b.width }; b.position = 'fixed'; b.top = `-${scrollY}px`; b.width = '100%';
+    const lock = lockableBody(); const scrollY = scrollY_(); const b = document.body.style;
+    const prev = { pos: b.position, top: b.top, w: b.width }; if (lock) { b.position = 'fixed'; b.top = `-${scrollY}px`; b.width = '100%'; }
 
     const H = sheet.offsetHeight;
     const defaultVisible = Math.min(innerHeight * 0.6, list.scrollHeight + head.offsetHeight + 24);
@@ -229,10 +230,10 @@ export function enhanceSelect(sel: HTMLSelectElement): void {
     list.focus({ preventScroll: true });
     return { root, list, active: 0, cleanup: () => {
       removeEventListener('pointermove', onPM); removeEventListener('pointerup', onPU);
-      const done = (): void => { root.remove(); b.position = prev.pos; b.top = prev.top; b.width = prev.w; scrollTo(0, scrollY); };
+      const done = (): void => { root.remove(); };
       sheet.style.transition = reduce() ? 'none' : 'transform 200ms cubic-bezier(.23,1,.32,1)'; sheet.style.transform = `translateY(${H}px)`; backdrop.style.opacity = '0';
       // restore scroll right away so the page does not jump while the sheet leaves
-      b.position = prev.pos; b.top = prev.top; b.width = prev.w; scrollTo(0, scrollY);
+      if (lock) { b.position = prev.pos; b.top = prev.top; b.width = prev.w; scrollTo(0, scrollY); }
       if (reduce()) done(); else setTimeout(() => root.remove(), 210);
     } };
   }

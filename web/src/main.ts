@@ -1,4 +1,5 @@
 import './style.css';
+import { el } from './ui/dom';
 import { cellToLatLng } from 'h3-js';
 import { loadMeta, loadRegions, loadCountries, loadCells, loadMonthly, loadPartial, type Countries, type Partial } from './data';
 import { CellIndex, seriesFromRegion, sensorTs, type Meta, type Region, type Series } from './lib/series';
@@ -26,7 +27,7 @@ import { ytdStats } from './lib/analytics';
 import { anomalyNow, anomalyBin, rankUnusual, unusualText, unusualBadge, noUnusualText, type CellAnomaly } from './lib/anomalyNow';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string): T => document.getElementById(id) as T;
-const el = (tag: string, cls?: string, text?: string): HTMLElement => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; };
+
 const fmt = fmtInt;
 const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
@@ -43,6 +44,7 @@ let fireMap: FireMap | undefined, replay: Replay | undefined;
 let partial: Partial | null = null;
 let bm: BmId = 'mono', imgManual: string | null = null, imgKey = '', lastImgSync = 0, imgTimer = 0;
 let cmp: AoiSpec | null = null, cmpSeries: Series | null = null, cmpName = '';
+let legendKey = '';
 let mapMode: 'activity' | 'anomaly' = 'activity';
 let anom: CellAnomaly | null = null, anomT = 0;
 let C: typeof ChartsMod | null = null;
@@ -330,14 +332,35 @@ function renderProof(): void {
   for (const [k, label] of [['snpp', 'S-NPP']] as const) { const pb = perYearBias(v, k); if (pb.length) box.append(biasStrip(pb)); else if (k === 'snpp') box.append(el('p', 'cap', `Year-level bias (${label}): ${DASH}`)); }
   if (meta.sample) box.append(el('p', 'cap', 'Sample data: placeholder numbers.'));
 }
+const SVGNS = 'http://www.w3.org/2000/svg';
+/** Tiny inline chart of annual totals; a dashed tick marks the year the sensors were switched. */
+function spark(vals: { year: number; total: number }[], color: string, markYear: number): SVGElement {
+  const w = 120, h = 30, max = Math.max(1, ...vals.map((v) => v.total)), x = (i: number): number => (i / Math.max(1, vals.length - 1)) * (w - 4) + 2, y = (v: number): number => h - 3 - (v / max) * (h - 8);
+  const svg = document.createElementNS(SVGNS, 'svg'); svg.setAttribute('viewBox', `0 0 ${w} ${h}`); svg.setAttribute('class', 'tspark'); svg.setAttribute('aria-hidden', 'true');
+  const mi = vals.findIndex((v) => v.year === markYear);
+  if (mi >= 0) { const l = document.createElementNS(SVGNS, 'line'); l.setAttribute('x1', String(x(mi))); l.setAttribute('x2', String(x(mi))); l.setAttribute('y1', '1'); l.setAttribute('y2', String(h - 1)); l.setAttribute('stroke', 'currentColor'); l.setAttribute('stroke-dasharray', '2 2'); l.setAttribute('opacity', '.45'); svg.append(l); }
+  const pl = document.createElementNS(SVGNS, 'polyline'); pl.setAttribute('points', vals.map((v, i) => `${x(i).toFixed(1)},${y(v.total).toFixed(1)}`).join(' ')); pl.setAttribute('fill', 'none'); pl.setAttribute('stroke', color); pl.setAttribute('stroke-width', '1.8'); pl.setAttribute('stroke-linejoin', 'round'); svg.append(pl);
+  return svg;
+}
 function renderInsights(): void {
-  const v = meta.validation, h = headline(v), ic = independentCheck(v);
-  $('proof-cap').textContent = `Central Asia, ${yearOf(meta.t_first) + 1}\u2013${yearOf(meta.t_last) - 1}`;
+  const v = meta.validation, h = headline(v), ic = independentCheck(v), st = sensorTs(meta);
+  const y1 = yearOf(meta.t_last) - 1, yS = yearOf(st.snppStart), yF = yearOf(meta.t_first) + 1;
+  $('h-proof').textContent = `Change in fire activity, ${yS}\u2013${y1} vs ${yF}\u2013${yS - 1}`;
+  $('proof-cap').textContent = 'Central Asia';
   const ul = $('insights'); ul.textContent = '';
-  const add = (k: string, val: string, cls: string, sub: string) => { const li = el('li'); li.append(el('div', 'k', k), el('div', `v ${cls}`.trim(), val), el('div', 's', sub)); ul.append(li); };
-  add('Naive stitching', h.naive, 'bad', 'wrong sign');
-  add('Harmonized', h.harm, '', 'change in mean annual total');
-  add('Independent check', ic.r2 === DASH ? DASH : `R\u00b2 ${ic.r2}`, 'small', 'VIIRS S-NPP predicting left-out years of MODIS');
+  const ca = regions.find((r) => r.id === 'central-asia');
+  const caSeries = ca ? seriesFromRegion(ca, meta) : null, sp = { tFirst: meta.t_first, tLast: meta.t_last };
+  const naiveAnn = caSeries ? annualTotals(caSeries.naive, 2000, y1, sp) : [], harmAnn = caSeries ? annualTotals(caSeries.harm, 2000, y1, sp) : [];
+  const nr = num(pick(v, 'naive_break_2012', 'jump_ratio')), hr = num(pick(v, 'harmonized_break_2012', 'jump_ratio'));
+  const tile = (cls: string, label: string, value: string, badge: { cls: string; text: string } | null, note: string, chart: SVGElement | null): void => {
+    const li = el('li', `tile ${cls}`); li.append(el('div', 'k', label), el('div', 'v', value));
+    if (badge) li.append(el('span', `pill ${badge.cls}`, badge.text));
+    li.append(el('div', 's', note)); if (chart) li.append(chart); ul.append(li);
+  };
+  const cs = getComputedStyle(document.documentElement), ember = cs.getPropertyValue('--ember').trim() || '#ff7d33', ink = cs.getPropertyValue('--ink').trim() || '#fff';
+  tile('naive', 'Just stitching MODIS \u2192 VIIRS', h.naive, nr === null ? null : { cls: 'warn', text: nr > 1 ? '\u2717 false rise' : '\u2717 false change' }, `created by the sensor switch in ${yS}, not by fires`, naiveAnn.length ? spark(naiveAnn, ember, yS) : null);
+  tile('harm', 'FireChronicle (harmonized)', h.harm, hr === null ? null : { cls: 'ok', text: hr < 1 ? '\u2713 real decline' : '\u2713 real rise' }, h.modis !== DASH ? `MODIS alone agrees: ${h.modis}` : 'calibrated to one scale', harmAnn.length ? spark(harmAnn, ink, yS) : null);
+  tile('check', 'Independent check', ic.r2 === DASH ? DASH : `R\u00b2 ${ic.r2}`, null, `VIIRS predicts left-out MODIS years${ic.baseline !== DASH ? ` \u00b7 baseline ${Number(ic.baseline).toFixed(2)}` : ''}`, null);
 }
 
 /* ---------- map frame ---------- */
@@ -432,6 +455,9 @@ function renderMap(): void {
     label = `${state.y0}–${state.y1}`; note.append(el('span', undefined, `Period ${label}`));
   }
   fireMap?.setValues(vals, vmax);
+  const lkey = `${label}|${Math.round(vmax)}`;
+  if (lkey === legendKey && $('maplegend').childElementCount) return;
+  legendKey = lkey;
   const lg = $('maplegend'); lg.textContent = '';
   const bar = el('div', 'bar'); bar.style.background = gradientCss(SEQ);
   const ends = el('div', 'ends'); ends.append(el('span', undefined, '0'), el('span', undefined, `${fmt(vmax)}+`));
@@ -640,7 +666,9 @@ function ensureVisuals(): Promise<void> {
     fireMap = new m.FireMap($('map'), prefersDark(), desktop);
     const tg = $('dim-toggle'); tg.setAttribute('aria-pressed', String(desktop)); tg.textContent = desktop ? '3D' : '2D';
     replay = new r.Replay($('replay'));
-    replay.onFrame = (t) => { state.frameT = t; renderMap(); if (!replay!.playing) renderCalendar(); };
+    if (new URLSearchParams(location.search).has('perf')) (window as unknown as { __fm: unknown }).__fm = fireMap;
+    let raf = 0;
+    replay.onFrame = (t) => { state.frameT = t; if (!raf) raf = requestAnimationFrame(() => { raf = 0; renderMap(); if (!replay!.playing) renderCalendar(); }); };
     replay.onStop = () => { renderCalendar(); renderMap(); };
     fireMap.onResetClick = () => fitMap();
     setupBasemap();
@@ -689,7 +717,7 @@ function fsApi(): FsApi {
   return {
     getHud: buildHud, mainSelect: $<HTMLSelectElement>('aoi-region'),
     flyTo: (lo, la) => { setMapMode('anomaly'); fireMap?.flyTo(lo, la, 7); },
-    resetView: () => fitMap(), resize: () => fireMap?.map.resize(),
+    resetView: () => fitMap(), resize: () => fireMap?.map.resize(), pixelRatio: (r) => fireMap?.map.setPixelRatio(r),
     zoom: (d) => { if (d > 0) fireMap?.map.zoomIn(); else fireMap?.map.zoomOut(); },
     toggleTheme: () => $('theme-btn').click(), openStyle,
   };

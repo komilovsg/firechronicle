@@ -1,5 +1,6 @@
 import type { BmId } from './lib/gibs';
 import { openInfoSheet } from './ui/sheet';
+import { mountPortal } from './ui/portal';
 
 export interface BmApi { current(): BmId; select(id: BmId): void; imagery(): { date: string; label: string } | null; step(days: number): void; canStep(days: number): boolean }
 const CARDS: { id: BmId; label: string; note: string; bg: string }[] = [
@@ -52,7 +53,7 @@ export function openStylePanel(anchor: HTMLElement, api: BmApi): void {
     close = () => { c(); live = null; close = null; };
     return;
   }
-  const pop = document.createElement('div'); pop.className = 'bm-pop'; pop.setAttribute('role', 'dialog'); pop.setAttribute('aria-label', 'Map style'); pop.append(root); document.body.append(pop);
+  const pop = document.createElement('div'); pop.className = 'bm-pop'; pop.setAttribute('role', 'dialog'); pop.setAttribute('aria-label', 'Map style'); pop.append(root); mountPortal(pop);
   const place = (): void => { const r = anchor.getBoundingClientRect(), w = Math.min(420, innerWidth - 16); pop.style.width = `${w}px`; pop.style.left = `${Math.max(8, Math.min(innerWidth - w - 8, r.left - w - 8))}px`; pop.style.top = `${Math.max(8, Math.min(innerHeight - pop.offsetHeight - 8, r.top))}px`; };
   place();
   const onDoc = (e: Event): void => { if (!pop.contains(e.target as Node) && !anchor.contains(e.target as Node)) closeIt(true); };

@@ -9,7 +9,7 @@ import { gibsProduct, tileUrl, RELIEF, NIGHT, type BmId, type Product } from './
 maplibregl.setWorkerUrl(new URL('./maplibre/maplibre-gl-worker.mjs', document.baseURI).href);
 const GLYPHS = 'https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf';
 const STYLE = { color: 'https://tiles.openfreemap.org/styles/liberty', light: 'https://tiles.openfreemap.org/styles/positron', dark: 'https://tiles.openfreemap.org/styles/dark' };
-type FC = { type: 'FeatureCollection'; features: { type: 'Feature'; properties: { i: number; n: number; v: number; ac: string; an: number }; geometry: { type: 'Polygon'; coordinates: number[][][] } }[] };
+type FC = { type: 'FeatureCollection'; features: { type: 'Feature'; id: number; properties: { i: number; n: number; v: number; ac: string; an: number }; geometry: { type: 'Polygon'; coordinates: number[][][] } }[] };
 const empty: FC = { type: 'FeatureCollection', features: [] };
 
 export class FireMap {
@@ -38,7 +38,7 @@ export class FireMap {
 
   constructor(el: HTMLElement, dark: boolean, pitch3d: boolean) {
     this.dark = dark; this.pitch3d = pitch3d;
-    this.map = new maplibregl.Map({ container: el, style: dark ? STYLE.dark : STYLE.light, transformStyle: ((_p: unknown, n: unknown) => this.merge(n as never)) as never, center: [67, 45], zoom: 3, pitch: pitch3d ? 45 : 0, bearing: pitch3d ? -10 : 0, attributionControl: { compact: true }, maxPitch: 70 });
+    this.map = new maplibregl.Map({ container: el, style: dark ? STYLE.dark : STYLE.light, transformStyle: ((_p: unknown, n: unknown) => this.merge(n as never)) as never, center: [67, 45], fadeDuration: 0, zoom: 3, pitch: pitch3d ? 45 : 0, bearing: pitch3d ? -10 : 0, attributionControl: { compact: true }, maxPitch: 70 });
     this.map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'top-right');
     const self = this;
     this.map.addControl({
@@ -133,7 +133,7 @@ export class FireMap {
     this.fc = { type: 'FeatureCollection', features: cells.map((c) => {
       const ring = cellToBoundary(c.id, true) as number[][];
       ring.push(ring[0]);
-      return { type: 'Feature', properties: { i: c.idx, n: 0, v: 0, ac: '#888888', an: 0 }, geometry: { type: 'Polygon', coordinates: [ring] } };
+      return { type: 'Feature', id: c.idx, properties: { i: c.idx, n: 0, v: 0, ac: '#888888', an: 0 }, geometry: { type: 'Polygon', coordinates: [ring] } };
     }) };
     this.src('hex')?.setData(this.fc);
     if (this.map.getLayer('hex-3d')) this.map.setPaintProperty('hex-3d', 'fill-extrusion-height', ['*', ['get', 'n'], heightM]);
@@ -141,11 +141,18 @@ export class FireMap {
   }
   /** values per cellIdx, normalised by vmax with a sqrt stretch. */
   setValues(vals: Float64Array, vmax: number): void {
+    const diff: { id: number; addOrUpdateProperties: { key: string; value: number }[] }[] = [];
     for (const f of this.fc.features) {
-      const v = vals[f.properties.i] || 0;
-      f.properties.v = v; f.properties.n = v > 0 ? Math.sqrt(Math.min(1, v / Math.max(vmax, 1e-9))) * 0.98 + 0.02 : 0;
+      const v = vals[f.properties.i] || 0, n = v > 0 ? Math.sqrt(Math.min(1, v / Math.max(vmax, 1e-9))) * 0.98 + 0.02 : 0;
+      if (f.properties.n === n && f.properties.v === v) continue;
+      f.properties.v = v; f.properties.n = n;
+      diff.push({ id: f.id, addOrUpdateProperties: [{ key: 'v', value: v }, { key: 'n', value: n }] });
     }
-    this.src('hex')?.setData(this.fc);
+    const src = this.src('hex');
+    if (!src || !diff.length) return;
+    // only the cells that changed (a replay frame touches a fraction of them); a full reload is cheaper when most changed
+    if (diff.length > this.fc.features.length * 0.5) src.setData(this.fc as never);
+    else (src as unknown as { updateData(d: unknown): Promise<void> }).updateData({ update: diff }).catch(() => src.setData(this.fc as never));
   }
   private applyMode(): void {
     if (this.map.getLayer('hex-3d')) this.map.setLayoutProperty('hex-3d', 'visibility', this.mode === 'activity' ? 'visible' : 'none');

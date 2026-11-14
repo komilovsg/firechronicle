@@ -10,12 +10,13 @@ export const TERMS: Record<string, { title: string; text: string }> = {
   'H3 cell': { title: 'H3 cell', text: 'A hexagon of about 250 km2 on a fixed global grid. Areas are made of these cells, and detections are counted per cell.' },
 };
 
+import { mountPortal } from './ui/portal';
 let pop: HTMLElement | null = null, openBtn: HTMLElement | null = null;
 function close(): void { if (pop) pop.hidden = true; openBtn?.setAttribute('aria-expanded', 'false'); openBtn = null; }
 function ensurePop(): HTMLElement {
   if (pop) return pop;
   pop = document.createElement('div'); pop.className = 'gloss-pop'; pop.id = 'gloss-pop'; pop.setAttribute('role', 'dialog'); pop.hidden = true;
-  document.body.append(pop);
+  mountPortal(pop);
   document.addEventListener('click', (e) => { if (openBtn && !(e.target as Element).closest('.gloss-pop, .gl-i')) close(); });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && openBtn) { const b = openBtn; close(); b.focus(); } });
   addEventListener('scroll', close, { passive: true }); addEventListener('resize', close);

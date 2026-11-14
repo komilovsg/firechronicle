@@ -1,6 +1,13 @@
 /** SI assistant: request/response contracts, validation and a tiny API client (fetch is injected, so tests can mock it). */
 export type Lang = 'en' | 'ru' | 'tg';
-export const LANGS: { id: Lang; label: string }[] = [{ id: 'en', label: 'EN' }, { id: 'ru', label: 'RU' }, { id: 'tg', label: 'TJ' }];
+/** Answer language from the question text: Tajik-specific letters -> tg, mostly Cyrillic -> ru, else en. */
+export function detectLang(text: string): Lang {
+  if (/[\u0493\u049b\u04b3\u04b7\u04e3\u04ef\u0492\u049a\u04b2\u04b6\u04e2\u04ee]/.test(text)) return 'tg';
+  const letters = text.match(/\p{L}/gu) ?? [];
+  if (!letters.length) return 'en';
+  const cyr = letters.filter((c) => /[\u0400-\u04ff]/.test(c)).length;
+  return cyr / letters.length > 0.5 ? 'ru' : 'en';
+}
 export type Facts = Record<string, string | number | null>;
 export const FACT_KEY = /^[a-z0-9_]{1,40}$/;
 export const MAX_FACTS = 40;

@@ -433,9 +433,18 @@ describe('gibs and clock', () => {
   });
 });
 
-import { LANGS, ask, buildAskBody, nav, parseAskResponse, sanitizeFacts, validateAction } from './assistant';
+import { detectLang, ask, buildAskBody, nav, parseAskResponse, sanitizeFacts, validateAction } from './assistant';
 describe('assistant contracts', () => {
-  it('Tajik is sent as ISO 639-1 tg but labelled TJ', () => { expect(LANGS.map((l) => [l.id, l.label])).toEqual([['en', 'EN'], ['ru', 'RU'], ['tg', 'TJ']]); expect(buildAskBody('q', 'tg').lang).toBe('tg'); });
+  it('detects the answer language from the question', () => {
+    expect(detectLang('When is the fire season?')).toBe('en');
+    expect(detectLang('Когда сезон пожаров здесь?')).toBe('ru');
+    expect(detectLang('Мавсими сӯхтор кай аст?')).toBe('tg'); // ӯ is Tajik-specific
+    expect(detectLang('Ин моҳ аз меъёр баланд аст?')).toBe('tg'); // ҳ
+    expect(detectLang('Hotspot чист?')).toBe('en'); // 7 Latin vs 4 Cyrillic letters
+    expect(detectLang('Что такое hotspot?')).toBe('ru'); // mostly Cyrillic
+    expect(detectLang('2012 2018 ?!')).toBe('en'); expect(detectLang('')).toBe('en'); expect(detectLang('   ')).toBe('en');
+    expect(buildAskBody('q', 'tg').lang).toBe('tg');
+  });
   const lim = { regionIds: ['central-asia', 'KAZ', 'TJK'], firstYear: 2000, lastYear: 2026, modes: ['harm', 'modis', 'viirs', 'naive', 'swipe'] };
   it('facts: key pattern, count cap, value types', () => {
     const raw: Record<string, unknown> = { good_key: 1, 'Bad Key': 2, ok2: 'x', nul: null, nan: NaN, obj: { a: 1 }, long: 'y'.repeat(500), '': 1, ['k'.repeat(41)]: 1 };
@@ -523,5 +532,16 @@ describe('unusual list', () => {
     const r = rankUnusual(a, cells);
     expect(r.list).toEqual([]); expect(r.eligible).toBe(2);
     expect(noUnusualText(T)).toBe('No unusual activity in July — most areas are near or below their usual level.');
+  });
+});
+
+import { el as domEl } from '../ui/dom';
+describe('el() text handling', () => {
+  it('null and undefined text add no text node', () => {
+    const made: { className: string; textContent: string | undefined }[] = [];
+    (globalThis as unknown as { document: unknown }).document = { createElement: () => { const o = { className: '', textContent: undefined as string | undefined }; made.push(o); return o; } };
+    const a = domEl('div' as never, 'x', null) as unknown as { textContent?: string }, b = domEl('div' as never, undefined, undefined) as unknown as { textContent?: string }, c = domEl('div' as never, undefined, '') as unknown as { textContent?: string }, d = domEl('div' as never, 'k', 'hi') as unknown as { textContent?: string };
+    expect(a.textContent).toBeUndefined(); expect(b.textContent).toBeUndefined(); expect(c.textContent).toBe(''); expect(d.textContent).toBe('hi');
+    delete (globalThis as unknown as { document?: unknown }).document;
   });
 });

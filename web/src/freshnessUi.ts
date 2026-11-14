@@ -2,6 +2,7 @@ import { nowDate } from './lib/clock';
 import { formatCountdown, freshness, nextRun, parseRefresh, shortCountdown, type FreshState, type Refresh } from './lib/freshness';
 import type { Meta } from './lib/series';
 import { openInfoSheet } from './ui/sheet';
+import { mountPortal } from './ui/portal';
 
 const MIN5 = 300000, H1 = 3600000;
 const mon = (d: Date): string => d.toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
@@ -49,7 +50,7 @@ export function initFreshness(meta: Meta): void {
     const s = document.createElement('span'); s.textContent = 'New data available.';
     const b = document.createElement('button'); b.type = 'button'; b.className = 'btn primary'; b.textContent = 'Reload'; b.addEventListener('click', () => location.reload());
     const x = document.createElement('button'); x.type = 'button'; x.className = 'btn ghost'; x.textContent = 'Later'; x.addEventListener('click', () => t.remove());
-    t.append(s, b, x); document.body.append(t);
+    t.append(s, b, x); mountPortal(t);
   };
   const poll = async (): Promise<void> => {
     try {
@@ -105,7 +106,7 @@ export function initFreshness(meta: Meta): void {
     if (matchMedia('(max-width: 640px)').matches) { pill.setAttribute('aria-expanded', 'true'); const close = openInfoSheet('Data freshness', info(refresh), pill); void close; pill.setAttribute('aria-expanded', 'false'); return; }
     if (pop) { closePop(); return; }
     pop = document.createElement('div'); pop.className = 'gloss-pop fresh-pop'; pop.setAttribute('role', 'dialog'); pop.setAttribute('aria-label', 'Data freshness');
-    pop.append(info(refresh)); document.body.append(pop);
+    pop.append(info(refresh)); mountPortal(pop);
     const r = pill.getBoundingClientRect(), w = Math.min(340, innerWidth - 16); pop.style.width = `${w}px`;
     pop.style.left = `${Math.max(8, Math.min(innerWidth - w - 8, r.left))}px`; pop.style.top = `${r.bottom + 8}px`;
     pill.setAttribute('aria-expanded', 'true');

@@ -1,4 +1,5 @@
 import { fsLayout } from './lib/fsLayout';
+import { el } from './ui/dom';
 import { snapDecision } from './ui/selectLogic';
 import { onFreshTick } from './freshnessUi';
 
@@ -14,13 +15,12 @@ export interface HudData {
 }
 export interface FsApi {
   getHud(): HudData; flyTo(lon: number, lat: number): void; resetView(): void; zoom(d: 1 | -1): void; resize(): void;
-  mainSelect: HTMLSelectElement; toggleTheme(): void; openStyle(anchor: HTMLElement): void;
+  mainSelect: HTMLSelectElement; toggleTheme(): void; pixelRatio(r: number): void; openStyle(anchor: HTMLElement): void;
 }
 const KEY = 'fc-fs-collapsed';
 const loadCollapsed = (): string[] => { try { const v = JSON.parse(localStorage.getItem(KEY) ?? '[]'); return Array.isArray(v) ? v.filter((x) => typeof x === 'string') : []; } catch { return []; } };
 const saveCollapsed = (a: string[]): void => { try { localStorage.setItem(KEY, JSON.stringify(a)); } catch { /* private mode */ } };
 const reduce = (): boolean => matchMedia('(prefers-reduced-motion: reduce)').matches;
-const el = <K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: string): HTMLElementTagNameMap[K] => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; };
 const $ = (id: string): HTMLElement => document.getElementById(id)!;
 
 let overlay: HTMLElement | null = null, active = false, apiRef: FsApi | null = null;
@@ -30,7 +30,7 @@ let returnFocus: HTMLElement | null = null;
 
 function move(node: Element, parent: Element, before: Node | null = null): void {
   const p = node.parentNode, n = node.nextSibling;
-  undo.push(() => { p?.insertBefore(node, n); });
+  undo.push(() => { try { if (p && n && n.parentNode === p) p.insertBefore(node, n); else p?.append(node); } catch { /* keep restoring */ } });
   parent.insertBefore(node, before);
 }
 function panel(id: string, title: string, collapsed: string[], opts: { titleEl?: HTMLElement } = {}): { root: HTMLElement; body: HTMLElement } {
@@ -43,9 +43,6 @@ function panel(id: string, title: string, collapsed: string[], opts: { titleEl?:
   btn.addEventListener('click', () => { const c = !body.hidden; set(c); const cur = loadCollapsed().filter((x) => x !== id); if (c) cur.push(id); saveCollapsed(cur); });
   head.append(t, btn); root.append(head, body);
   return { root, body };
-}
-function icon(label: string, text: string, fn: () => void): HTMLButtonElement {
-  const b = el('button', 'fs-ic', text); b.type = 'button'; b.setAttribute('aria-label', label); b.title = label; b.addEventListener('click', fn); return b;
 }
 
 function build(api: FsApi) {
@@ -64,12 +61,16 @@ function build(api: FsApi) {
   const fresh = el('div', 'fs-fresh'); fresh.setAttribute('aria-live', 'off');
   tl.body.append(name, lab, figs, fresh);
   // top-right: controls
-  const tr = panel('controls', 'Map', collapsed);
-  const stack = el('div', 'fs-stack');
-  const exit = icon('Exit fullscreen map (Esc)', '✕', () => void exitFs());
-  stack.append(icon('Zoom in', '+', () => api.zoom(1)), icon('Zoom out', '−', () => api.zoom(-1)), icon('Reset view', '⟲', () => api.resetView()), icon('Switch theme', '◐', () => api.toggleTheme()));
-  const layersHome = el('div', 'fs-layers'); const btn3dHome = el('div', 'fs-3d');
-  tr.body.append(layersHome, btn3dHome, stack, exit);
+  // control rail: small capsules of icon buttons
+  const rail = el('div', 'fs-rail');
+  const rb = (label: string, tip: string, cls: string, fn: () => void, text = ''): HTMLButtonElement => { const b = el('button', `fs-ic ${cls}`.trim(), text); b.type = 'button'; b.setAttribute('aria-label', label); b.dataset.tip = tip; b.addEventListener('click', fn); return b; };
+  const cap = (...kids: HTMLElement[]): HTMLElement => { const c = el('div', 'cap'); c.append(...kids); return c; };
+  const exit = rb('Exit fullscreen map', 'Exit (Esc or F)', 'danger', () => void exitFs(), '\u2715');
+  const reset = rb('Reset view', 'Reset view (R)', 'ic ic-reset', () => api.resetView()); reset.dataset.reset = '1';
+  const style = rb('Map style', 'Map style', 'ic ic-style', () => api.openStyle(style));
+  const c0 = cap(exit), c2 = cap(reset, style);
+  rail.append(c0, cap(rb('Zoom in', 'Zoom in', '', () => api.zoom(1), '+'), rb('Zoom out', 'Zoom out', '', () => api.zoom(-1), '\u2212')), c2,
+    cap(rb('Switch theme', 'Theme', 'ic ic-theme', () => api.toggleTheme()), rb('Hide the panels', 'Hide panels (H)', 'ic ic-hide', () => ov.classList.toggle('fs-clean'))));
   // bottom row
   const bottom = el('div', 'fs-bottom');
   const bl = panel('legend', 'Legend', collapsed); const legendHome = el('div', 'fs-legend'); const nrt = el('p', 'fs-nrt'); bl.body.append(legendHome, nrt, el('p', 'fs-credit', 'FireChronicle \u00b7 Deep Space AI'));
@@ -81,9 +82,9 @@ function build(api: FsApi) {
   bottom.append(bl.root, tm.root, br.root);
   // mobile sheet
   const sheetWrap = el('div', 'fs-sheetwrap'); const sheet = el('div', 'fs-sheet'); const sh = el('div', 'fs-sheadhead'); sh.append(el('div', 'csel-grab'), el('div', 'fs-stitle', 'Details')); const sbody = el('div', 'fs-sbody'); sheet.append(sh, sbody); sheetWrap.append(sheet);
-  hud.append(tl.root, tr.root, bottom, sheetWrap);
+  hud.append(tl.root, rail, bottom, sheetWrap);
   ov.append(hud); document.body.append(ov);
-  return { sheetWrap, ov, hud, name, sel, figs, f1, f2, f3, fresh, tl, tr, bl, tm, br, stack, exit, layersHome, btn3dHome, legendHome, replayHome, nrt, spark, sparkCap, top, ctx, sheet, sh, sbody, unH, panels: [tl.root, tr.root, bl.root, tm.root, br.root] };
+  return { sheetWrap, ov, hud, name, sel, figs, f1, f2, f3, fresh, tl, rail, c0, c2, bl, tm, br, exit, legendHome, replayHome, nrt, spark, sparkCap, top, ctx, sheet, sh, sbody, unH, panels: [tl.root, rail, bl.root, tm.root, br.root] };
 }
 
 function drawBars(c: HTMLCanvasElement, b: NonNullable<HudData['bars']>): void {
@@ -100,7 +101,7 @@ export function refreshHud(): void {
   if (!active || !hudEls || !apiRef) return;
   const d = apiRef.getHud(), h = hudEls;
   h.name.textContent = d.aoiName;
-  const drifted = document.querySelector('.ctrl-reset')?.classList.contains('drifted') ?? false; h.stack.querySelectorAll('[data-reset]').forEach((x) => x.classList.toggle('drifted', drifted));
+  const drifted = document.querySelector('.ctrl-reset')?.classList.contains('drifted') ?? false; h.rail.querySelectorAll('[data-reset]').forEach((x) => x.classList.toggle('drifted', drifted));
   h.f1.v.textContent = d.month.big; h.f1.s.textContent = d.month.sub; h.f2.v.textContent = d.next.big; h.f2.s.textContent = d.next.sub; h.f3.v.textContent = d.ytd.big; h.f3.s.textContent = d.ytd.sub;
   h.nrt.textContent = d.nrtNote; h.nrt.hidden = !d.nrtNote;
   if (d.bars) { h.br.root.classList.remove('empty'); drawBars(h.spark, d.bars); h.sparkCap.textContent = d.bars.title; h.spark.setAttribute('aria-label', `${d.bars.title}. Current ${Math.round(d.bars.cur)}, median ${Math.round(d.bars.median)}.`); } else { h.sparkCap.textContent = 'Not enough history yet.'; }
@@ -127,11 +128,10 @@ function applyLayout(): void {
   if (mobile) {
     h.sbody.append(layers, h.figs, legend, h.nrt, h.ctx);
     h.tl.root.querySelector('.fs-phead')!.prepend(h.sel.closest('label')!); h.tl.root.querySelector('.fs-phead')!.append(h.exit);
-    h.stack.prepend(dim);
   } else {
-    h.layersHome.append(layers); h.btn3dHome.append(dim);
+    h.bl.body.prepend(layers); h.c2.prepend(dim);
     h.tl.body.insertBefore(h.sel.closest('label')!, h.fresh); h.tl.body.insertBefore(h.figs, h.fresh); h.legendHome.append(legend); h.bl.body.append(h.nrt); h.br.body.append(h.ctx);
-    h.tr.body.append(h.exit);
+    h.c0.append(h.exit);
   }
   if (mobile) setupSheet();
   apiRef?.resize();
@@ -180,10 +180,10 @@ async function enterFs(api: FsApi): Promise<void> {
   const h = hudEls, ov = overlay!;
   const wrap = document.querySelector('.mapwrap')!, replay = $('replay');
   move(wrap, ov, h.hud);
-  move(replay, h.replayHome); move($('maplegend'), h.legendHome); move($('maplayers'), h.layersHome); move($('dim-toggle'), h.btn3dHome);
+  move(replay, h.replayHome); move($('maplegend'), h.legendHome); move($('maplayers'), h.bl.body, h.bl.body.firstChild); move($('dim-toggle'), h.c2, h.c2.firstChild);
   ov.hidden = false; ov.classList.remove('fs-clean'); ov.classList.add('fs-enter');
   document.documentElement.classList.add('fs-on');
-  active = true;
+  active = true; api.pixelRatio(Math.min(devicePixelRatio || 1, 1.5));
   h.panels.forEach((p, i) => p.style.setProperty('--i', String(i)));
   applyLayout();
   try { if (ov.requestFullscreen) { await ov.requestFullscreen(); ov.dataset.native = '1'; } } catch { /* iOS Safari: stay in the overlay */ }
@@ -200,7 +200,7 @@ async function exitFs(fromBrowser = false): Promise<void> {
   const h = hudEls!;
   h.legendHome.append($('maplegend')); // keep nodes inside the overlay while restoring order
   while (undo.length) undo.pop()!();
-  document.documentElement.classList.remove('fs-on');
+  document.documentElement.classList.remove('fs-on'); apiRef?.pixelRatio(devicePixelRatio || 1);
   requestAnimationFrame(() => { apiRef?.resize(); requestAnimationFrame(() => { apiRef?.resize(); apiRef?.resetView(); }); });
   returnFocus?.focus?.(); document.getElementById('fs-btn')?.focus?.();
 }
