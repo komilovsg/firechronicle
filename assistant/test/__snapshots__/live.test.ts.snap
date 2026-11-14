@@ -1,0 +1,28 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`buildFactsDocs > matches snapshot 1`] = `
+[
+  {
+    "docId": "validation",
+    "section": "Cleaning, refresh and data coverage",
+    "text": "[FireChronicle validation results | Cleaning, refresh and data coverage]
+Detections removed because FIRMS type is not 0 (not presumed vegetation fire): 2.9 percent.
+Data through 2026-11-14.",
+    "title": "FireChronicle validation results",
+    "url": "https://komilovsg.github.io/firechronicle/",
+  },
+  {
+    "docId": "regions",
+    "section": "Tajikistan (TJK)",
+    "text": "[Fire activity by country (computed from FireChronicle data) | Tajikistan (TJK)]
+Typical fire season in Tajikistan: Jan–Mar and May–Aug and Dec (months whose median monthly total, over all complete months since November 2000, is at least 8 percent of the sum of monthly medians). The peak month is July.
+Median annual harmonized total in Tajikistan for 2001-2025: 662 MODIS-equivalent detections. The three highest years were 2010 (737), 2002 (735), 2019 (714). The lowest year was 2008 (585). The year with the most detections was 2010.
+The most active calendar month in Tajikistan over the last 10 complete years (2016-2025) is May.
+Harmonized detections in 2025 in Tajikistan: 665 MODIS-equivalent detections, which is 0 percent above the 2001-2025 median.
+Mean annual harmonized total in Tajikistan: 663 in 2001-2011 and 662 in 2012-2025, a change of -0 percent (lower in the later period).
+Data through 2026-11-14.",
+    "title": "Fire activity by country (computed from FireChronicle data)",
+    "url": "https://komilovsg.github.io/firechronicle/",
+  },
+]
+`;

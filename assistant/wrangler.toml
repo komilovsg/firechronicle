@@ -1,0 +1,13 @@
+name = "firechronicle-assistant"
+main = "src/index.ts"
+compatibility_date = "2026-11-01"
+
+[vars]
+RETRIEVAL_MODE = "hybrid"
+THRESHOLD = "0.55"
+RATE_SALT = "fc-rate-v1"
+
+# KV id is filled in after `wrangler kv namespace create KV`
+[[kv_namespaces]]
+binding = "KV"
+id = "68ac3d42215c4511b5204811e112b3e1"
