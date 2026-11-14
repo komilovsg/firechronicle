@@ -1,0 +1,218 @@
+{
+ "version": 1,
+ "sample": false,
+ "generated_at": "2026-11-14T13:13:55Z",
+ "data_through": "2026-11-14",
+ "region": {
+  "name": "Central Asia",
+  "bbox": [
+   46,
+   35,
+   88,
+   56
+  ],
+  "countries": [
+   {
+    "id": "KAZ",
+    "name": "Kazakhstan"
+   },
+   {
+    "id": "UZB",
+    "name": "Uzbekistan"
+   },
+   {
+    "id": "TKM",
+    "name": "Turkmenistan"
+   },
+   {
+    "id": "KGZ",
+    "name": "Kyrgyzstan"
+   },
+   {
+    "id": "TJK",
+    "name": "Tajikistan"
+   },
+   {
+    "id": "AFG",
+    "name": "Afghanistan"
+   }
+  ]
+ },
+ "h3_res": 5,
+ "t_first": 10,
+ "t_last": 322,
+ "t_nrt_from": 319,
+ "current_month_partial_days": 14,
+ "units": "MODIS-equivalent active fire detections",
+ "sensors": {
+  "modis": {
+   "label": "MODIS (Terra+Aqua)",
+   "start": "2000-11-01",
+   "end": "2026-11-14"
+  },
+  "snpp": {
+   "label": "VIIRS S-NPP",
+   "start": "2012-01-20",
+   "end": "2026-11-02"
+  },
+  "n20": {
+   "label": "VIIRS NOAA-20",
+   "start": "2018-04-01",
+   "end": "2026-11-14"
+  },
+  "n21": {
+   "label": "VIIRS NOAA-21",
+   "start": "2023-03-01",
+   "end": "2026-11-14"
+  }
+ },
+ "calibration": {
+  "snpp": {
+   "global_ratio": 3.447,
+   "fit_years": "2012-2025"
+  },
+  "n20": {
+   "global_ratio": 3.507,
+   "fit_years": "2018-2025"
+  },
+  "n21": {
+   "global_ratio": 3.637,
+   "fit_years": "2023-2025"
+  },
+  "terra_to_terra_aqua": 2.059
+ },
+ "sources": [
+  {
+   "name": "NASA FIRMS (Fire Information for Resource Management System)",
+   "url": "https://www.earthdata.nasa.gov/data/tools/firms"
+  },
+  {
+   "name": "MODIS Collection 6.1 active fire / hotspot detections (MCD14ML), distributed by NASA FIRMS",
+   "url": "https://firms.modaps.eosdis.nasa.gov/download/",
+   "doi": "10.5067/FIRMS/MODIS/MCD14ML"
+  },
+  {
+   "name": "VIIRS 375 m active fire, Suomi NPP (VNP14IMG v002)",
+   "url": "https://firms.modaps.eosdis.nasa.gov/download/",
+   "doi": "10.5067/VIIRS/VNP14IMG.002"
+  },
+  {
+   "name": "VIIRS 375 m active fire, NOAA-20 (VJ114IMG v002)",
+   "url": "https://firms.modaps.eosdis.nasa.gov/download/",
+   "doi": "10.5067/VIIRS/VJ114IMG.002"
+  },
+  {
+   "name": "VIIRS 375 m active fire, NOAA-21 (VJ214IMG v002)",
+   "url": "https://firms.modaps.eosdis.nasa.gov/download/",
+   "doi": "10.5067/VIIRS/VJ214IMG.002"
+  },
+  {
+   "name": "MODIS C6/C6.1 Active Fire Product User's Guide v1.0",
+   "url": "https://earthdata.nasa.gov/s3fs-public/2023-09/MODIS_C6_C6.1_Fire_User_Guide_1.0.pdf"
+  },
+  {
+   "name": "VIIRS Collection 2 375 m Active Fire Product User's Guide v1.2",
+   "url": "https://www.earthdata.nasa.gov/s3fs-public/2025-06/VIIRS_C2_AF-375m_User_Guide_1.2.pdf"
+  },
+  {
+   "name": "Suomi NPP observations cease on November 2, 2026 (NASA Earthdata)",
+   "url": "https://www.earthdata.nasa.gov/data/alerts-outages/suomi-npp-data-product-delivery-cease-november-1-2026"
+  },
+  {
+   "name": "Transition from MODIS to VIIRS (NASA Earthdata)",
+   "url": "https://www.earthdata.nasa.gov/data/alerts-outages/transition-from-modis-viirs"
+  },
+  {
+   "name": "Natural Earth 1:50m admin-0 boundaries (public domain)",
+   "url": "https://www.naturalearthdata.com/"
+  }
+ ],
+ "validation": {
+  "naive_break_2012": {
+   "test": "Pettitt (deseasonalized log monthly, 2001-2025)",
+   "p": 1.7e-12,
+   "change_point": "2012-03",
+   "jump_ratio": 1.6
+  },
+  "harmonized_break_2012": {
+   "test": "Pettitt (deseasonalized log monthly, 2001-2025)",
+   "p": 2.86e-10,
+   "change_point": "2011-01",
+   "jump_ratio": 0.46
+  },
+  "modis_only_reference": {
+   "test": "Pettitt (deseasonalized log monthly, 2001-2025)",
+   "p": 1.98e-10,
+   "change_point": "2011-01",
+   "jump_ratio": 0.46
+  },
+  "cv": {
+   "snpp": {
+    "country_month": {
+     "bias_pct": -0.13,
+     "mae": 47.91,
+     "r2": 0.985,
+     "n": 995
+    },
+    "region_month": {
+     "bias_pct": -0.13,
+     "mae": 238.55,
+     "r2": 0.978,
+     "n": 168
+    },
+    "years": "2012-2025"
+   },
+   "n20": {
+    "country_month": {
+     "bias_pct": 0.16,
+     "mae": 49.7,
+     "r2": 0.972,
+     "n": 557
+    },
+    "region_month": {
+     "bias_pct": 0.16,
+     "mae": 242.25,
+     "r2": 0.961,
+     "n": 96
+    },
+    "years": "2018-2025"
+   },
+   "n21": {
+    "country_month": {
+     "bias_pct": 1.33,
+     "mae": 29.9,
+     "r2": 0.986,
+     "n": 203
+    },
+    "region_month": {
+     "bias_pct": 1.33,
+     "mae": 115.93,
+     "r2": 0.985,
+     "n": 36
+    },
+    "years": "2023-2025"
+   }
+  },
+  "chain_check_noaa20": {
+   "direct": 3.507,
+   "via_snpp": 3.406
+  },
+  "known_event": {
+   "name": "Abai region steppe fire, Kazakhstan, June 2023",
+   "rank_of_june_2023_among_junes": 17,
+   "of": 26
+  },
+  "top_months_central_asia": [
+   "2002-09",
+   "2003-10",
+   "2002-08",
+   "2004-06",
+   "2012-04"
+  ],
+  "notes": [
+   "Calibration on standard-processing (SP) years only; NRT months are provisional.",
+   "Uncertainty band: bootstrap over calibration years plus Poisson counting noise, approximate 90%.",
+   "Hotspot counts are not burned area and not fire size."
+  ]
+ }
+}

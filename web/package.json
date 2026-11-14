@@ -1,0 +1,27 @@
+{
+  "name": "firechronicle-web",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "sample": "node scripts/make-sample-data.mjs",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "worker": "mkdir -p public/maplibre && cp node_modules/maplibre-gl/dist/maplibre-gl-worker.mjs node_modules/maplibre-gl/dist/maplibre-gl-shared.mjs public/maplibre/",
+    "predev": "npm run worker",
+    "prebuild": "npm run worker",
+    "prepreview": "npm run worker"
+  },
+  "dependencies": {
+    "echarts": "6.1.0",
+    "h3-js": "4.5.0",
+    "maplibre-gl": "6.18.0"
+  },
+  "devDependencies": {
+    "typescript": "7.0.2",
+    "vite": "8.3.8",
+    "vitest": "5.1.0"
+  }
+}

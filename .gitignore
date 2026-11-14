@@ -1,0 +1,10 @@
+.env
+data/raw/
+data/*.log
+pipeline/.venv/
+node_modules/
+dist/
+__pycache__/
+.pytest_cache/
+*.parquet
+web/screenshots/
