@@ -587,3 +587,49 @@ describe('go-mode years fallback and number spans', () => {
     expect(splitNumbers('')).toEqual([]); expect(splitNumbers('no numbers').every((x) => !x.num)).toBe(true);
   });
 });
+
+import { firstSentence, areaCode, buildDataModule, isValidationCited, numberCitations, regionOf, topicOf, validationChips } from './briefing';
+describe('briefing logic', () => {
+  const src = (title: string, section: string) => ({ title, section, url: 'https://x.org/a' });
+  it('topic and region detection from sources', () => {
+    const tj = [src('Fire activity by country (computed from FireChronicle data)', 'Tajikistan (TJK)')];
+    expect(regionOf(tj)).toBe('TJK'); expect(topicOf(tj)).toBe('TJK');
+    expect(regionOf([src('Limitations', 'What a hotspot is not')])).toBeNull();
+    expect(topicOf([src('Limitations', 'What a hotspot is not')])).toBe('LIMITS');
+    expect(topicOf([src('Methodology', 'How the series is harmonized')])).toBe('METHOD');
+    expect(topicOf([src('Validation', 'Independent check')])).toBe('VALIDATION');
+    expect(topicOf([src('Sensors', 'MODIS and VIIRS')])).toBe('SATELLITES');
+    expect(topicOf([src('Data access', 'Static files')])).toBe('DATA');
+    expect(topicOf([])).toBe('GENERAL');
+    expect(isValidationCited([src('Validation', 'x')])).toBe(true); expect(isValidationCited([src('Methodology', 'y')])).toBe(false);
+  });
+  it('citation numbering', () => {
+    const c = numberCitations([src('A', 'S1'), src('B', '')]);
+    expect(c.map((x) => x.n)).toEqual([1, 2]); expect(c[0].label).toBe('A \u00b7 S1'); expect(c[1].label).toBe('B');
+    expect(numberCitations([])).toEqual([]);
+  });
+  it('data module is computed from the series with the page functions', () => {
+    const tLast = 12 * 12 + 10, a = new Float64Array(tLast + 1);
+    for (let t = 0; t <= tLast; t++) { const m = t % 12 + 1; a[t] = (m === 2 || m === 3 ? 50 : m >= 7 && m <= 9 ? 40 : 2) * (Math.floor(t / 12) === 11 ? 2 : 1); }
+    const d = buildDataModule(a, { tFirst: 0, tLast }, 2000, 2026)!;
+    expect(d.chips[0]).toEqual({ k: 'SEASON', v: 'Feb\u2013Mar \u00b7 Jul\u2013Sep' }); expect(d.chips[1].k).toBe('PEAK');
+    expect(d.chips[2].k).toBe('2011 vs MEDIAN'); expect(d.chips[2].v).toBe('+100%');
+    expect(d.months.length).toBe(12); expect(d.months[1].inSeason).toBe(true); expect(d.months[0].inSeason).toBe(false);
+    expect(Math.max(...d.months.map((m) => m.share))).toBe(1);
+    expect(d.spark!.years[d.spark!.years.length - 1]).toBe(2011); expect(d.spark!.totals.length).toBe(d.spark!.years.length);
+    expect(buildDataModule(new Float64Array(5), { tFirst: 0, tLast: 4 }, 2000, 2026)).toBeNull();
+  });
+  it('validation chips and area codes', () => {
+    expect(validationChips({ cv: { snpp: { country_month: { r2: 0.9851 }, region_month: { bias_pct: -0.13 } } } })).toEqual([{ k: 'R\u00b2', v: '0.985' }, { k: 'BIAS', v: '\u22120.13%' }]);
+    expect(validationChips({})).toEqual([]); expect(validationChips(undefined)).toEqual([]);
+    expect([areaCode('region', 'TJK'), areaCode('region', 'central-asia'), areaCode('polygon')]).toEqual(['TJK', 'CA', 'CUSTOM']);
+  });
+});
+
+describe('preview text', () => {
+  it('first sentence', () => {
+    expect(firstSentence('Typical fire season in Tajikistan: Feb\u2013Mar and Jul\u2013Sep. The 2025 total was 22% above.')).toBe('Typical fire season in Tajikistan: Feb\u2013Mar and Jul\u2013Sep.');
+    expect(firstSentence('One sentence only')).toBe('One sentence only'); expect(firstSentence('  ')).toBe('');
+    expect(firstSentence('R\u00b2 is 0.988. Next.')).toBe('R\u00b2 is 0.988.');
+  });
+});

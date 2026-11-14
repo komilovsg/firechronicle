@@ -2,7 +2,7 @@ import type { Theme } from './theme';
 import { SEQ } from './theme';
 import { MONTH_ABBR, tFromYM } from './lib/time';
 
-export interface Brief { name: string; arr: Float64Array; tLast: number; y0: number; y1: number; headline: string; sub: string; critical: string; th: Theme; vmax: number; unit: string; sample: boolean }
+export interface Brief { name: string; arr: Float64Array; tLast: number; y0: number; y1: number; headline: string; sub: string; critical: string; th: Theme; vmax: number; unit: string; sample: boolean; si?: boolean }
 export function drawBriefing(cv: HTMLCanvasElement, b: Brief): void {
   cv.width = 1200; cv.height = 630;
   const g = cv.getContext('2d')!, th = b.th;
@@ -36,7 +36,8 @@ export function drawBriefing(cv: HTMLCanvasElement, b: Brief): void {
   f(500, 16, "'IBM Plex Mono', monospace"); g.fillStyle = ink3; g.fillText('HIGH-ACTIVITY PERIOD AHEAD', tx, 430);
   f(700, 30); g.fillStyle = ink; g.fillText(b.critical, tx, 470);
   f(400, 14, "'IBM Plex Sans', sans-serif"); g.fillStyle = ink3; g.fillText(`Calendar: ${b.unit}, ${b.y0}–${Math.floor(b.tLast / 12) + 2000}. Climatology, not a forecast.`, 48, 560);
-  g.fillText(`FireChronicle · Deep Space AI · NASA FIRMS · MODIS + VIIRS harmonized · generated ${new Date().toISOString().slice(0, 10)} · Not an official NASA product`, 48, 592);
+  f(400, b.si ? 12 : 14, "'IBM Plex Sans', sans-serif");
+  g.fillText(`FireChronicle · Deep Space AI ${b.si ? '· SI-written · facts from NASA FIRMS data ' : ''}· NASA FIRMS · MODIS + VIIRS harmonized · generated ${new Date().toISOString().slice(0, 10)} · Not an official NASA product`, 48, 592);
 }
 function wrap(g: CanvasRenderingContext2D, text: string, x: number, y: number, w: number, lh: number): void {
   let line = '', yy = y;

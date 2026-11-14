@@ -600,6 +600,7 @@ async function exportPoints(): Promise<void> {
     else { x.download(new Blob([r.csv], { type: 'text/csv;charset=utf-8' }), `firechronicle-hotspots-${state.y0}-${state.y1}.csv`); setExp(`Downloaded ${r.rows.toLocaleString('en-US')} rows${r.missing.length ? `. No point file for ${r.missing.join(', ')}` : ''}.`); }
   } catch (e) { setExp(`Export failed: ${(e as Error).message}. Try again.`); } finally { btn.disabled = false; prog.hidden = true; }
 }
+let briefingSi = false;
 async function briefing(): Promise<void> {
   if (!series) return;
   const bm = await import('./briefing'), ex = await import('./export');
@@ -609,7 +610,7 @@ async function briefing(): Promise<void> {
   const cv = document.createElement('canvas');
   const pos: number[] = []; for (let t = meta.t_first; t <= meta.t_last; t++) if (series.harm[t] > 0) pos.push(series.harm[t]);
   bm.drawBriefing(cv, {
-    name: aoiName, arr: series.harm, tLast: meta.t_last, y0: Math.max(state.y0, 2000), y1: state.y1, th, vmax: Math.max(1, percentile(pos, 98)), unit: 'harmonized detections per month', sample: !!meta.sample,
+    name: aoiName, arr: series.harm, tLast: meta.t_last, y0: Math.max(state.y0, 2000), y1: state.y1, th, vmax: Math.max(1, percentile(pos, 98)), unit: 'harmonized detections per month', sample: !!meta.sample, si: briefingSi,
     headline: tm ? `${fmt(tm.value)}` : 'n/a',
     sub: tm ? `detections in ${MONTH_FULL[tm.month - 1]} ${tm.year} so far (${tm.days} days). ${Number.isFinite(tm.pctVsMedian) ? `${tm.pctVsMedian >= 0 ? '+' : '−'}${Math.abs(Math.round(tm.pctVsMedian))}% vs median, ` : ''}${ordinal(tm.rank)} percentile.` : 'Not enough history to compare this month.',
     critical: o.next ? `${MONTH_ABBR[o.next.from - 1]}${o.next.from === o.next.to ? '' : '–' + MONTH_ABBR[o.next.to - 1]} (${o.next.n} yr climatology)` : 'None in the next 12 months',
@@ -872,7 +873,21 @@ async function boot(): Promise<void> {
   initFreshness(meta); $('badge-nrt').hidden = false;
   renderHeroText(); renderInsights(); renderProof();
   wireControls(); wireExtras(); renderMethod();
-  initAssistant({ areaName: () => aoiName, facts: assistantFacts, apply: assistantApply, limits: () => ({ regionIds: regions.map((r) => r.id), firstYear: 2000, lastYear, modes: MODES }) });
+  initAssistant({
+    areaName: () => aoiName, facts: assistantFacts, apply: assistantApply,
+    areaId: () => ({ kind: state.aoi.kind, id: state.aoi.kind === 'region' ? state.aoi.id : undefined }),
+    dataThrough: () => meta.data_through ?? meta.generated_at.slice(0, 10),
+    limits: () => ({ regionIds: regions.map((r) => r.id), firstYear: 2000, lastYear, modes: MODES }),
+    regionData: (iso) => {
+      const sp = { tFirst: meta.t_first, tLast: meta.t_last };
+      if (iso === null) return series ? { harm: series.harm, sp, y0: state.y0, y1: state.y1 } : null;
+      const r = regions.find((x) => x.id === iso);
+      return r ? { harm: seriesFromRegion(r, meta).harm, sp, y0: 2000, y1: lastYear } : null;
+    },
+    validation: () => meta.validation,
+    openCalendar: (iso) => { assistantApply({ area: iso }); setTimeout(() => $('h-cal').scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'start' }), 500); },
+    shareCard: async (iso) => { state.aoi = { kind: 'region', id: iso }; state.frameT = null; await refresh(); briefingSi = true; try { await briefing(); } finally { briefingSi = false; } },
+  });
   $<HTMLDetailsElement>('method').addEventListener('toggle', () => { if ($<HTMLDetailsElement>('method').open) void ensureExplainer(); });
   applyHash(); syncControls();
   void ensureVisuals().catch((e) => setStatus(`Could not load the map and charts (${(e as Error).message}).`, () => { visuals = null; void refresh(); }));
