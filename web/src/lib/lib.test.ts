@@ -433,8 +433,9 @@ describe('gibs and clock', () => {
   });
 });
 
-import { ask, buildAskBody, nav, parseAskResponse, sanitizeFacts, validateAction } from './assistant';
+import { LANGS, ask, buildAskBody, nav, parseAskResponse, sanitizeFacts, validateAction } from './assistant';
 describe('assistant contracts', () => {
+  it('Tajik is sent as ISO 639-1 tg but labelled TJ', () => { expect(LANGS.map((l) => [l.id, l.label])).toEqual([['en', 'EN'], ['ru', 'RU'], ['tg', 'TJ']]); expect(buildAskBody('q', 'tg').lang).toBe('tg'); });
   const lim = { regionIds: ['central-asia', 'KAZ', 'TJK'], firstYear: 2000, lastYear: 2026, modes: ['harm', 'modis', 'viirs', 'naive', 'swipe'] };
   it('facts: key pattern, count cap, value types', () => {
     const raw: Record<string, unknown> = { good_key: 1, 'Bad Key': 2, ok2: 'x', nul: null, nan: NaN, obj: { a: 1 }, long: 'y'.repeat(500), '': 1, ['k'.repeat(41)]: 1 };

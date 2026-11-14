@@ -2,10 +2,10 @@ import { snapDecision } from './selectLogic';
 const reduce = (): boolean => matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 /** Simple bottom sheet for short content (phones). Drag the header down (or flick) to close; Esc and backdrop also close. */
-export function openInfoSheet(title: string, body: HTMLElement, returnFocus?: HTMLElement | null): () => void {
+export function openInfoSheet(title: string, body: HTMLElement, returnFocus?: HTMLElement | null, opts: { tall?: boolean } = {}): () => void {
   const root = document.createElement('div'); root.className = 'csel-sheetroot';
   const backdrop = document.createElement('div'); backdrop.className = 'csel-backdrop';
-  const sheet = document.createElement('div'); sheet.className = 'csel-sheet info'; sheet.setAttribute('role', 'dialog'); sheet.setAttribute('aria-modal', 'true'); sheet.setAttribute('aria-label', title);
+  const sheet = document.createElement('div'); sheet.className = 'csel-sheet info' + (opts.tall ? ' tall' : ''); sheet.setAttribute('role', 'dialog'); sheet.setAttribute('aria-modal', 'true'); sheet.setAttribute('aria-label', title);
   const head = document.createElement('div'); head.className = 'csel-head';
   const grab = document.createElement('div'); grab.className = 'csel-grab'; grab.setAttribute('aria-hidden', 'true');
   const row = document.createElement('div'); row.className = 'csel-title';

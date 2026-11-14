@@ -331,6 +331,7 @@ function renderProof(): void {
 }
 function renderInsights(): void {
   const v = meta.validation, h = headline(v), ic = independentCheck(v);
+  $('proof-cap').textContent = `Central Asia, ${yearOf(meta.t_first) + 1}\u2013${yearOf(meta.t_last) - 1}`;
   const ul = $('insights'); ul.textContent = '';
   const add = (k: string, val: string, cls: string, sub: string) => { const li = el('li'); li.append(el('div', 'k', k), el('div', `v ${cls}`.trim(), val), el('div', 's', sub)); ul.append(li); };
   add('Naive stitching', h.naive, 'bad', 'wrong sign');
@@ -510,6 +511,7 @@ function wireControls(): void {
   $('dl-points').addEventListener('click', exportPoints);
   $('dl-series').addEventListener('click', () => { if (!series) return; void import('./export').then((x) => { x.download(new Blob([x.seriesCsv(series!, state.y0, state.y1, meta.t_first, meta.t_last)], { type: 'text/csv;charset=utf-8' }), `firechronicle-monthly-${state.y0}-${state.y1}.csv`); setExp('Monthly series CSV downloaded.'); }); });
   $('dl-brief').addEventListener('click', briefing);
+  $('proof-why').addEventListener('click', (e) => { e.preventDefault(); $('before-after').scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth' }); });
   $('why-link').addEventListener('click', (e) => { e.preventDefault(); const d = $<HTMLDetailsElement>('method'); d.open = true; void ensureExplainer(); $('why').scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth' }); });
   window.addEventListener('hashchange', () => { applyHash(); state.frameT = null; void refresh(); });
 }
@@ -779,6 +781,19 @@ function wireExtras(): void {
   $('dl-dataset').addEventListener('click', () => void import('./export').then((x) => { x.download(new Blob([x.regionsCsv(regions, meta, seriesFromRegion)], { type: 'text/csv;charset=utf-8' }), 'firechronicle-harmonized-regions.csv'); setExp('Harmonized monthly series for all regions downloaded.'); }));
   const raw = $('raw-links'); raw.textContent = 'Raw files: ';
   ['meta.json', 'regions.json', 'cells.json', 'monthly.json', 'countries.geojson'].forEach((f, i) => { if (i) raw.append(' \u00b7 '); const a = el('a', undefined, f) as HTMLAnchorElement; a.href = `./data/${f}`; a.target = '_blank'; a.rel = 'noopener'; raw.append(a); });
+  // phones: ? / GitHub / theme / cite live in the overflow menu
+  {
+    const acts = document.querySelector('.hdr-actions')!, pop = $('more-pop'), more = $('more-btn');
+    const items = ['gh-btn', 'tour-btn', 'theme-btn', 'cite-menu'].map((id) => $(id));
+    const place = (phone: boolean): void => { for (const it of items) { if (phone) { pop.append(it); it.classList.add('in-menu'); } else { acts.insertBefore(it, more); it.classList.remove('in-menu'); } } if (!phone) closeMenu(); };
+    const closeMenu = (): void => { pop.hidden = true; more.setAttribute('aria-expanded', 'false'); };
+    more.addEventListener('click', () => { pop.hidden = !pop.hidden; more.setAttribute('aria-expanded', String(!pop.hidden)); if (!pop.hidden) (pop.querySelector('a, button') as HTMLElement | null)?.focus(); });
+    document.addEventListener('click', (e) => { if (!pop.hidden && !pop.contains(e.target as Node) && !more.contains(e.target as Node)) closeMenu(); });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !pop.hidden) { closeMenu(); more.focus(); } });
+    pop.addEventListener('click', (e) => { if ((e.target as HTMLElement).closest('button, a')) setTimeout(closeMenu, 0); });
+    const mq = matchMedia('(max-width: 640px)'); place(mq.matches); mq.addEventListener('change', () => place(mq.matches));
+    $('cite-menu').addEventListener('click', (e) => void copyText(CITATION, e.currentTarget as HTMLElement, '\u2713', '\u275e'));
+  }
   addEventListener('keydown', (e) => {
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     const t = e.target as HTMLElement | null, tag = t?.tagName ?? '';

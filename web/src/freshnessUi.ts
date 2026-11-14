@@ -19,8 +19,10 @@ export function freshText(refresh: Refresh): string {
 function link(refresh: Refresh): HTMLAnchorElement {
   const a = document.createElement('a'); a.href = refresh.issues_url; a.target = '_blank'; a.rel = 'noopener noreferrer'; a.textContent = 'Contact the team (GitHub issues)'; return a;
 }
+let infoLines: string[] = [];
 function info(refresh: Refresh): HTMLElement {
   const box = document.createElement('div'); box.className = 'fresh-info';
+  if (infoLines.length) { const p0 = document.createElement('p'); p0.textContent = infoLines.join(' \u00b7 '); p0.style.fontWeight = '600'; box.append(p0); }
   const p1 = document.createElement('p'); p1.textContent = `Data refresh automatically every day at ${refresh.schedule_utc} UTC from NASA FIRMS (MODIS, VIIRS NOAA-20, NOAA-21). Recent months are provisional until science-quality data replace them.`;
   const p2 = document.createElement('p'); p2.textContent = `Automatic updates are scheduled until ${refresh.auto_update_until}. After that the data stay available but are no longer refreshed. To extend updates, contact the team. `;
   p2.append(link(refresh)); box.append(p1, p2); return box;
@@ -31,7 +33,8 @@ export function initFreshness(meta: Meta): void {
   const loaded = meta.generated_at, through = meta.data_through ?? meta.generated_at.slice(0, 10);
   const pill = q('fresh') as HTMLButtonElement, digits = q('fr-digits');
   pill.hidden = false;
-  q('fr-upd').textContent = `Last update ${mon(new Date(meta.generated_at))}`;
+  infoLines = [`Last update ${mon(new Date(meta.generated_at))}`, `Data through ${dayText(through)}`];
+  q('fr-upd').textContent = infoLines[0];
   q('fr-through').textContent = `· Data through ${dayText(through)}`;
   digits.textContent = '';
   for (let i = 0; i < 8; i++) { const c = document.createElement('span'); c.textContent = '0'; digits.append(c); }

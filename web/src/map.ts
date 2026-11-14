@@ -74,7 +74,7 @@ export class FireMap {
     const vis = (m: 'activity' | 'anomaly') => ({ visibility: this.mode === m ? 'visible' : 'none' });
     const op = sat ? 0.85 : d ? 0.92 : 0.88;
     const layers: unknown[] = [
-      { id: 'hex-base', type: 'line', source: 'hex', paint: { 'line-color': bright ? '#ffffff' : '#2a3441', 'line-opacity': bright && this.bm !== 'mono' ? 0.22 : 0.14, 'line-width': 0.5 } },
+      { id: 'hex-base', type: 'line', source: 'hex', paint: { 'line-color': bright ? '#ffffff' : '#2a3441', 'line-opacity': this.bm === 'sat' || this.bm === 'relief' || this.bm === 'night' ? 0.07 : 0.14, 'line-width': 0.5 } },
       { id: 'hex-3d', type: 'fill-extrusion', source: 'hex', layout: vis('activity'), filter: ['>', ['get', 'n'], 0], paint: { 'fill-extrusion-color': ['interpolate', ['linear'], ['get', 'n'], ...stops], 'fill-extrusion-height': ['*', ['get', 'n'], this.height], 'fill-extrusion-opacity': op, 'fill-extrusion-vertical-gradient': true } },
       { id: 'hex-anom', type: 'fill-extrusion', source: 'hex', layout: vis('anomaly'), filter: ['>', ['get', 'an'], 0], paint: { 'fill-extrusion-color': ['get', 'ac'], 'fill-extrusion-height': ['*', ['get', 'an'], this.height], 'fill-extrusion-opacity': op, 'fill-extrusion-vertical-gradient': true } },
       { id: 'shape-line', type: 'line', source: 'shape', paint: { 'line-color': bright || d ? '#ff7d33' : '#b94a07', 'line-width': 2.5 } },

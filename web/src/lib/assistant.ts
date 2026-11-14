@@ -1,6 +1,6 @@
 /** SI assistant: request/response contracts, validation and a tiny API client (fetch is injected, so tests can mock it). */
-export type Lang = 'en' | 'ru' | 'tj';
-export const LANGS: { id: Lang; label: string }[] = [{ id: 'en', label: 'EN' }, { id: 'ru', label: 'RU' }, { id: 'tj', label: 'TJ' }];
+export type Lang = 'en' | 'ru' | 'tg';
+export const LANGS: { id: Lang; label: string }[] = [{ id: 'en', label: 'EN' }, { id: 'ru', label: 'RU' }, { id: 'tg', label: 'TJ' }];
 export type Facts = Record<string, string | number | null>;
 export const FACT_KEY = /^[a-z0-9_]{1,40}$/;
 export const MAX_FACTS = 40;
