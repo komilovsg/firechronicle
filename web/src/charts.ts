@@ -16,7 +16,7 @@ type Opt = any;
 
 export function makeChart(el: HTMLElement): Chart {
   const c = echarts.init(el, undefined, { renderer: 'canvas' });
-  new ResizeObserver(() => c.resize()).observe(el);
+  let t = 0; new ResizeObserver(() => { clearTimeout(t); t = window.setTimeout(() => c.resize(), 90); }).observe(el);
   return c;
 }
 const fmt = fmtInt;

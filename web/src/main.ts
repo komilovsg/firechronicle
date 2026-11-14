@@ -3,6 +3,13 @@ import { el } from './ui/dom';
 import { createEmber } from './ui/ember';
 import { openInfoSheet } from './ui/sheet';
 import { initMapDrawer } from './ui/mapDrawer';
+import { mountHero, type HeroData } from './hero';
+import { createSteps, track, hardTimeout, type Steps } from './lib/boot';
+import { initBootUi } from './bootUi';
+import { retryControl } from './ui/retryUi';
+import { createMapStatus, placeEmber, type MapStatus } from './ui/mapStatus';
+import { routeCheck } from './lib/route';
+import { chunk, StaleBuildError } from './lib/chunk';
 import { cellToLatLng, cellToBoundary } from 'h3-js';
 import { loadMeta, loadRegions, loadCountries, loadCells, loadMonthly, loadPartial, loadRecent, type Countries, type Partial } from './data';
 import { CellIndex, seriesFromRegion, sensorTs, type Meta, type Region, type Series } from './lib/series';
@@ -60,6 +67,29 @@ const charts: Record<string, Chart> = {};
 const state: State = { aoi: { kind: 'region', id: 'central-asia' }, y0: 2000, y1: 2026, mode: 'harm', frameT: null, seasonYear: null };
 let lastYear = 2026;
 let lastKey = '';
+let bootSteps: Steps | null = null;
+let satsApi: { toggle(): void; onArea(): void; isOn(): boolean } | null = null;
+let mapStatus: MapStatus | null = null, hexesApplied = false, mapErrored = false;
+function retryMapTiles(): Promise<boolean> {
+  return new Promise((res) => {
+    const fm = fireMap; if (!fm) { res(false); return; }
+    mapErrored = false; let done = false;
+    const fin = (ok: boolean): void => { if (done) return; done = true; if (ok) mapStatus?.recovered(); res(ok); };
+    fm.map.once('idle', () => fin(!mapErrored)); setTimeout(() => fin(false), 10000);
+    fm.setBasemap(bm, imageryDateFor(mapMode === 'anomaly' ? null : state.frameT, new Date(), imgManual));
+  });
+}
+function areaCentroid(): { lat: number; lon: number } | null {
+  const a = state.aoi; if (a.kind === 'circle') return { lat: a.lat, lon: a.lon };
+  if (!aoiCells.length) return null;
+  let x0 = 180, x1 = -180, y0 = 90, y1 = -90; for (const c of aoiCells) { x0 = Math.min(x0, lon[c]); x1 = Math.max(x1, lon[c]); y0 = Math.min(y0, lat[c]); y1 = Math.max(y1, lat[c]); }
+  return { lat: (y0 + y1) / 2, lon: (x0 + x1) / 2 };
+}
+let statusTries = 0;
+function setBusy(on: boolean): void {
+  document.documentElement.classList.toggle('skel', on); $('panel').setAttribute('aria-busy', String(on));
+  const l = document.getElementById('live'); if (l) l.textContent = on ? 'Loading' : 'Loaded';
+}
 
 const MODE_LABEL: Record<CalMode, string> = { harm: 'Harmonized', modis: 'Raw MODIS', viirs: 'Raw VIIRS', naive: 'Naive splice', swipe: 'Swipe: naive vs harmonized' };
 const MODE_NOTE: Record<CalMode, string> = {
@@ -70,11 +100,12 @@ const MODE_NOTE: Record<CalMode, string> = {
   swipe: 'Drag the handle, or focus it and use the arrow keys. Left: naive splice. Right: harmonized. Same colour scale.',
 };
 
-function setStatus(msg: string, retry?: () => void): void {
+function setStatus(msg: string, retry?: () => void, label = 'Retry'): void {
   const s = $('status'); s.textContent = '';
   if (!msg) return;
   s.append(el('span', undefined, msg));
-  if (retry) { const b = el('button', 'btn', 'Retry') as HTMLButtonElement; b.type = 'button'; b.addEventListener('click', retry); s.append(b); }
+  if (retry && label === 'Retry') retryControl(s, { attempts: statusTries, run: () => { statusTries++; setStatus(''); retry(); return true; } });
+  else if (retry) { const b = el('button', 'btn primary', label) as HTMLButtonElement; b.type = 'button'; b.addEventListener('click', retry); s.append(b); }
 }
 const chart = (key: string, id: string): Chart => (charts[key] ??= C!.makeChart($(id)));
 
@@ -113,7 +144,7 @@ function getSeries(): Series | null {
 let renderToken = 0;
 async function refresh(fit = true): Promise<void> {
   const token = ++renderToken;
-  computeAoi();
+  computeAoi(); satsApi?.onArea();
   anom = null; renderUnusual();
   $('maphint').hidden = !(state.aoi.kind === 'region' && state.aoi.id === 'central-asia');
   $('aoi-name').textContent = aoiName;
@@ -123,10 +154,10 @@ async function refresh(fit = true): Promise<void> {
   $('panel').removeAttribute('data-empty'); $('dash-empty').textContent = '';
   series = getSeries();
   if (!series) {
-    setStatus('Loading cell data for this area…');
-    try { await ensureMonthly(); } catch { setStatus('Could not load monthly.json.', () => void refresh()); return; }
+    setBusy(true);
+    try { await ensureMonthly(); } catch { setBusy(false); setStatus('Could not load monthly.json.', () => void refresh()); return; }
     if (token !== renderToken) return;
-    setStatus('');
+    setBusy(false);
     series = getSeries();
   }
   if (!series) return;
@@ -321,7 +352,8 @@ function renderProof(): void {
   add('bad', 'Naive stitching', h.naive, h.naiveCp ? `wrong sign; change point ${h.naiveCp}, the sensor switch` : 'wrong sign; sensors joined without calibration');
   add('', 'MODIS only', h.modis, h.modisCp ? `one sensor, no splice; change point ${h.modisCp}` : 'one sensor, no splice');
   add('', 'Harmonized', h.harm, h.harmCp ? `all sensors, one scale; change point ${h.harmCp}` : 'all sensors, one scale');
-  $('ba-why').textContent = `Naive stitching flips the sign of the change (2012\u201325 vs 2001\u201311: ${h.naive} vs ${h.harm}) and hides a clear decline.`;
+  const modisLine = heroData().sentence.split('. FireChronicle')[0] + '. ';
+  $('ba-why').textContent = `${modisLine}Naive stitching flips the sign of the change (2012\u201325 vs 2001\u201311: ${h.naive} vs ${h.harm}) and hides a clear decline.`;
   // validation panel
   const box = $('valid'); box.textContent = '';
   const ic = independentCheck(v), rows = cvRows(v), head = rows[0];
@@ -377,7 +409,7 @@ async function setMapHexes(): Promise<void> {
   const dLon = Math.max(...aoiCells.map((i) => lon[i])) - Math.min(...aoiCells.map((i) => lon[i])), dLat = Math.max(...aoiCells.map((i) => lat[i])) - Math.min(...aoiCells.map((i) => lat[i]));
   const diag = Math.hypot(dLon * 80, dLat * 111) * 1000;
   const height = Math.min(150000, Math.max(12000, diag * 0.08));
-  const fm = fireMap; await fm.ready; fm.setHexes(cells, height);
+  const fm = fireMap; await fm.ready; fm.setHexes(cells, height); hexesApplied = true;
 }
 async function postIndex(token: number): Promise<void> {
   void setMapHexes();
@@ -591,7 +623,7 @@ function wireControls(): void {
   }));
   // exports
   $('dl-points').addEventListener('click', exportPoints);
-  $('dl-series').addEventListener('click', () => { if (!series) return; void import('./export').then((x) => { x.download(new Blob([x.seriesCsv(series!, state.y0, state.y1, meta.t_first, meta.t_last)], { type: 'text/csv;charset=utf-8' }), `firechronicle-monthly-${state.y0}-${state.y1}.csv`); setExp('Monthly series CSV downloaded.'); }); });
+  $('dl-series').addEventListener('click', () => { if (!series) return; void chunk(() => import('./export')).then((x) => { x.download(new Blob([x.seriesCsv(series!, state.y0, state.y1, meta.t_first, meta.t_last)], { type: 'text/csv;charset=utf-8' }), `firechronicle-monthly-${state.y0}-${state.y1}.csv`); setExp('Monthly series CSV downloaded.'); }); });
   $('dl-brief').addEventListener('click', briefing);
   $('proof-why').addEventListener('click', (e) => { e.preventDefault(); $('before-after').scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth' }); });
   $('why-link').addEventListener('click', (e) => { e.preventDefault(); const d = $<HTMLDetailsElement>('method'); d.open = true; void ensureExplainer(); $('why').scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth' }); });
@@ -641,10 +673,11 @@ function setExp(t: string): void { $('exp-msg').textContent = t; }
 async function exportPoints(): Promise<void> {
   const btn = $<HTMLButtonElement>('dl-points'), prog = $<HTMLProgressElement>('exp-progress');
   if (!aoiCells.length) { setExp('Nothing to export: the area has no cells.'); return; }
+  if (typeof DecompressionStream === 'undefined') { setExp('Hotspot export needs a recent browser (DecompressionStream is missing). The other downloads still work.'); return; }
   btn.disabled = true; prog.hidden = false; prog.value = 0;
   try {
     const set = new Set(aoiCells.map((i) => cellIds[i]));
-    const x = await import('./export');
+    const x = await chunk(() => import('./export'));
     const r = await x.pointsCsv(set, meta.h3_res, state.y0, state.y1, (d: number, t: number, n: number) => { prog.value = d / t; setExp(`Reading year ${state.y0 + Math.min(d, t - 1)} of ${state.y0}–${state.y1}… ${n.toLocaleString('en-US')} rows so far`); });
     if (r.rows === 0) setExp(`No hotspot rows for this area and years${r.missing.length ? ` (no file for ${r.missing.join(', ')})` : ''}.`);
     else { x.download(new Blob([r.csv], { type: 'text/csv;charset=utf-8' }), `firechronicle-hotspots-${state.y0}-${state.y1}.csv`); setExp(`Downloaded ${r.rows.toLocaleString('en-US')} rows${r.missing.length ? `. No point file for ${r.missing.join(', ')}` : ''}.`); }
@@ -653,7 +686,7 @@ async function exportPoints(): Promise<void> {
 let briefingSi = false;
 async function briefing(): Promise<void> {
   if (!series) return;
-  const bm = await import('./briefing'), ex = await import('./export');
+  const bm = await chunk(() => import('./briefing')), ex = await chunk(() => import('./export'));
   const sp = { tFirst: meta.t_first, tLast: meta.t_last }, th = theme();
   const tm = thisMonthStats(series.harm, state.y0, state.y1, sp, pdays(), partialHist());
   const o = outlook(series.harm, sp);
@@ -710,14 +743,16 @@ function renderMethod(): void {
 
 /* ---------- boot ---------- */
 function ensureVisuals(): Promise<void> {
-  visuals ??= (async () => { C = await import('./charts'); })();
+  visuals ??= (async () => { C = await chunk(() => import('./charts')); })();
   return visuals;
 }
 let mapReady: Promise<void> | null = null;
 /** MapLibre is created the first time the Map section is shown; Overview never needs it. */
 function ensureMap(): Promise<void> {
   mapReady ??= (async () => {
-    const [, m, r] = await Promise.all([ensureVisuals(), import('./map'), import('./replay')]);
+    const cv = document.createElement('canvas');
+    if (!(cv.getContext('webgl2') || cv.getContext('webgl'))) { const ph = document.getElementById('map-ph'); if (ph) { ph.hidden = false; ph.dataset.mode = 'full'; document.getElementById('mp-cap')!.hidden = true; const er = document.getElementById('mp-err')!; er.textContent = 'Map needs WebGL \u2014 try a recent browser.'; er.hidden = false; } throw new Error('WebGL is not available'); }
+    const [, m, r] = await Promise.all([ensureVisuals(), chunk(() => import('./map')), chunk(() => import('./replay'))]);
     const desktop = window.innerWidth > 768;
     fireMap = new m.FireMap($('map'), prefersDark(), desktop);
     const tg = $('dim-toggle'); tg.setAttribute('aria-pressed', String(desktop)); tg.textContent = desktop ? '3D' : '2D';
@@ -733,14 +768,29 @@ function ensureMap(): Promise<void> {
     fireMap.onDrawFinish = () => { if (draft.length > 3) draft.pop(); finishDraw(); };
     await new Promise<void>((r) => requestAnimationFrame(() => r()));
     fireMap.map.resize(); fitPending = false;
+    fireMap.onSatClick = () => void (async () => {
+      if (!satsApi) {
+        const m = await chunk(() => import('./sats'));
+        const endedKeys = (): Set<string> => new Set(sensorStatus(meta.sensors, meta.data_through ?? meta.generated_at.slice(0, 10)).filter((x) => x.state === 'ended').map((x) => x.key));
+        const key: Record<string, string> = { terra: 'modis', aqua: 'modis', snpp: 'snpp', n20: 'n20', n21: 'n21' };
+        satsApi = m.initSats({ getMap: () => fireMap, host: () => document.querySelector<HTMLElement>('.mapwrap')!, centroid: areaCentroid, areaName: () => aoiName, ended: (id) => endedKeys().has(key[id] ?? id), colors: () => ({ modis: theme().modis, viirs: theme().viirs }) });
+      }
+      satsApi.toggle();
+    })().catch((e) => { if (e instanceof StaleBuildError) stale(); else console.error(e); });
+    mapStatus = createMapStatus(() => setBm('mono'), retryMapTiles);
+    mapStatus.show('full'); hexesApplied = false; mapErrored = false;
+    fireMap.map.on('error', () => { mapErrored = true; setTimeout(() => { if (mapErrored && mapStatus && !mapStatus.isError() && !fireMap?.map.isStyleLoaded()) mapStatus.error(); }, 4000); });
+    fireMap.map.on('idle', () => { bootSteps?.done('map'); if (!hexesApplied) return; if (mapErrored) mapStatus?.error(); else mapStatus?.hide(); });
+    fireMap.map.once('idle', () => bootSteps?.done('map'));
+    setTimeout(() => { if (!hexesApplied) { hexesApplied = true; mapStatus?.hide(); } }, 12000);
     if (series && aoiCells.length) { replay.setData(series.harm, meta.t_first, meta.t_last, theme()); drawShape(); fitMap(); await setMapHexes(); setMapMode(mapMode); renderMap(); }
-  })().catch((e) => { mapReady = null; throw e; });
+  })().then(() => { statusTries = 0; }, (e) => { mapReady = null; throw e; });
   return mapReady;
 }
 let explainerRender: (() => void) | null = null;
 async function ensureExplainer(): Promise<void> {
   if (explainerRender) return;
-  const x = await import('./explainer');
+  const x = await chunk(() => import('./explainer'));
   explainerRender = x.mountExplainer($('why'), theme);
 }
 /* ---------- overview dashboard ---------- */
@@ -782,9 +832,26 @@ function dashRows(): CountryRow[] {
   return [mk('', 'This area', series!, partialHist())];
 }
 let dashBuilt = false;
+let heroApi: { reopen: () => void; done: Promise<void> } | null = null;
+function heroData(): HeroData {
+  const ca = regions.find((r) => r.id === 'central-asia') ?? regions[0], sr = seriesFromRegion(ca, meta), sp = { tFirst: meta.t_first, tLast: meta.t_last };
+  const y1 = yearOf(meta.t_last) - 1, tot = (a: Float64Array) => annualTotals(a, 2001, y1, sp), h = headline(meta.validation), end = /^(\d{4})-(\d{2})-(\d{2})$/.exec(meta.sensors.snpp.end);
+  const when = end ? `${+end[3]} ${MONTH_ABBR[+end[2] - 1]} ${end[1]}` : meta.sensors.snpp.end, yrs = yearOf(meta.t_last) - yearOf(meta.t_first);
+  const nv = tot(sr.naive), hm = tot(sr.harm);
+  return { sentence: `MODIS is retiring. Suomi NPP went dark on ${when}. FireChronicle keeps ${yrs} years of NASA satellite fire records on one scale.`, naiveText: h.naive, harmText: h.harm, r2: independentCheck(meta.validation).r2, years: nv.map((x) => x.year), naive: nv.map((x) => x.total), harm: hm.map((x) => x.total), switchYear: yearOf(sensorTs(meta).snppStart), yrs, footer: 'NASA Space Apps 2026 \u00b7 Deep Space AI \u00b7 Data: NASA FIRMS' };
+}
+function watchYears(): void {
+  setView('map', { push: true });
+  void ensureMap().then(() => { fireMap?.set3d(true); const tg = $('dim-toggle'); tg.setAttribute('aria-pressed', 'true'); tg.textContent = '3D'; if (replay && !replay.playing) replay.toggle(); });
+}
 function renderDash(): void {
   if (!series) return;
-  if (!dashBuilt) { buildDash($('dash')); $('d-proof').append($('proof-block')); dashBuilt = true; }
+  if (!dashBuilt) {
+    buildDash($('dash')); $('d-proof').append($('proof-block')); dashBuilt = true;
+    const hr = el('div'); hr.id = 'hero'; $('dash').prepend(hr);
+    void chunk(() => import('./tour')).then((t) => t.setTourIntro(heroData().sentence));
+    heroApi = mountHero(hr, heroData(), { explore: () => document.getElementById('d-status')?.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'start' }), watch: watchYears });
+  }
   const m: DashModel = { meta, areaName: aoiName, dataThrough: meta.data_through ?? meta.generated_at.slice(0, 10), kpis: dashKpis(), rows: dashRows(), tableTitle: state.aoi.kind === 'region' && state.aoi.id === 'central-asia' ? 'Countries' : 'This area', activeId: state.aoi.kind === 'region' ? state.aoi.id : null, sensors: sensorStatus(meta.sensors, meta.data_through ?? meta.generated_at.slice(0, 10)) };
   $('d-sub').textContent = `${aoiName}: latest activity and how it compares with normal.`;
   renderStatus(m); renderKpis(m);
@@ -837,16 +904,35 @@ function setView(v: View, o: { write?: boolean; push?: boolean } = {}): void {
     const fm = fireMap;
     requestAnimationFrame(() => { fm.map.resize(); if (fitPending) { fitPending = false; fitMap(); } void setMapHexes(); drawShape(); renderMap(); });
   }
-  if (v === 'map') void ensureMap().catch((e) => setStatus(`Could not load the map (${(e as Error).message}).`, () => void ensureMap()));
+  if (v === 'map') void ensureMap().catch((e) => (e instanceof StaleBuildError ? stale() : setStatus(`Could not load the map (${(e as Error).message}).`, () => void ensureMap())));
   if (changed) window.scrollTo(0, 0);
   if (o.write !== false) writeHash(o.push);
   window.dispatchEvent(new Event('fc-viewchange'));
 }
+function wireFabAutoHide(): void {
+  const fab = $('ask-btn'); let lastY = scrollY, acc = 0, ticking = false, idle = 0;
+  const pinned = (): boolean => view === 'map' || !!document.querySelector('.ember-bubble') || document.documentElement.classList.contains('assist-open');
+  const set = (hide: boolean): void => { fab.classList.toggle('fab-hide', hide && !pinned()); };
+  const run = (): void => {
+    ticking = false; const y = scrollY, dy = y - lastY; lastY = y;
+    if (Math.sign(dy) !== Math.sign(acc)) acc = 0; acc += dy;
+    const atBottom = innerHeight + y >= document.documentElement.scrollHeight - 4;
+    if (acc > 8 && y > 80 && !atBottom) set(true); else if (acc < -8 || y <= 80 || atBottom) set(false);
+    clearTimeout(idle); idle = window.setTimeout(() => set(false), 800);
+  };
+  addEventListener('scroll', () => { if (!ticking) { ticking = true; requestAnimationFrame(run); } }, { passive: true });
+  window.addEventListener('fc-viewchange', () => { acc = 0; lastY = scrollY; set(false); });
+}
 function wireShell(): void {
+  wireFabAutoHide();
   const root = document.documentElement;
   try { root.dataset.side = localStorage.getItem('fc-side') === 'rail' ? 'rail' : 'full'; } catch { root.dataset.side = 'full'; }
+  const railMq = matchMedia('(min-width: 640px) and (max-width: 1023px)');
+  const syncRail = (): void => { root.toggleAttribute('data-rail', railMq.matches); };
+  syncRail(); railMq.addEventListener('change', syncRail);
+  root.addEventListener('transitionend', (e) => { if ((e as TransitionEvent).propertyName === '--sbw') { fireMap?.map.resize(); Object.values(charts).forEach((c) => c.resize()); } });
   const tg = $('side-toggle');
-  const sync = (): void => { const r = root.dataset.side === 'rail'; tg.setAttribute('aria-pressed', String(r)); tg.setAttribute('aria-label', r ? 'Expand the sidebar' : 'Collapse the sidebar'); };
+  const sync = (): void => { const r = root.dataset.side === 'rail', t = r ? 'Expand sidebar' : 'Collapse sidebar'; tg.setAttribute('aria-expanded', String(!r)); tg.setAttribute('aria-label', t); tg.title = r ? 'Deep Space AI \u00b7 expand sidebar ([)' : `${t} ([)`; };
   sync();
   tg.addEventListener('click', () => { root.dataset.side = root.dataset.side === 'rail' ? 'full' : 'rail'; try { localStorage.setItem('fc-side', root.dataset.side); } catch { /* private mode */ } sync(); });
   document.addEventListener('click', (e) => {
@@ -898,7 +984,7 @@ function fsApi(): FsApi {
   };
 }
 async function toggleFs(): Promise<void> {
-  try { if (view !== 'map') setView('map', { push: true }); await ensureMap(); const m = await import('./fullscreen'); await m.toggleFullscreen(fsApi()); } catch (e) { setStatus(`Could not open fullscreen (${(e as Error).message}).`); }
+  try { if (view !== 'map') setView('map', { push: true }); await ensureMap(); const m = await chunk(() => import('./fullscreen')); await m.toggleFullscreen(fsApi()); } catch (e) { if (e instanceof StaleBuildError) { stale(); return; } setStatus(`Could not open fullscreen (${(e as Error).message}).`); }
 }
 const hudPing = (): void => { window.dispatchEvent(new Event('fc-hud')); };
 const bmKey = (): string => `${state.frameT ?? 'p'}|${mapMode}`;
@@ -913,6 +999,7 @@ function syncImagery(force = false): void {
 function setBm(id: BmId): void {
   bm = id; try { localStorage.setItem('fc-bm', id); } catch { /* private mode */ }
   imgKey = bmKey(); imgManual = null;
+  mapErrored = false; mapStatus?.show('light');
   fireMap?.setBasemap(id, imageryDateFor(mapMode === 'anomaly' ? null : state.frameT, new Date(), null));
   writeHash(); refreshStylePanel();
 }
@@ -986,19 +1073,19 @@ function wireExtras(): void {
   const tb = $('theme-btn'), showTheme = () => { const name = THEME_UI[themeMode()]; $('theme-val').textContent = name; tb.setAttribute('aria-label', `Theme: ${name}. Click to change.`); tb.title = `Theme: ${name}`; };
   showTheme();
   tb.addEventListener('click', () => { const order: ThemeMode[] = ['system', 'light', 'dark']; applyThemeMode(order[(order.indexOf(themeMode()) + 1) % 3]); showTheme(); });
-  const tour = (): void => { void import('./tour').then((m) => m.startTour()); };
+  const tour = (): void => { void chunk(() => import('./tour')).then((m) => m.startTour()); };
   $('tour-btn').addEventListener('click', tour);
   $('fs-btn').addEventListener('click', () => void toggleFs());
   $('cite-btn').addEventListener('click', (e) => void copyText(CITATION, e.currentTarget as HTMLElement, 'Citation copied', 'Cite'));
   $('cite-foot').addEventListener('click', (e) => void copyText(CITATION, e.currentTarget as HTMLElement, 'Citation copied', 'Cite'));
-  $('dl-dataset').addEventListener('click', () => void import('./export').then((x) => { x.download(new Blob([x.regionsCsv(regions, meta, seriesFromRegion)], { type: 'text/csv;charset=utf-8' }), 'firechronicle-harmonized-regions.csv'); setExp('Harmonized monthly series for all regions downloaded.'); }));
+  $('dl-dataset').addEventListener('click', () => void chunk(() => import('./export')).then((x) => { x.download(new Blob([x.regionsCsv(regions, meta, seriesFromRegion)], { type: 'text/csv;charset=utf-8' }), 'firechronicle-harmonized-regions.csv'); setExp('Harmonized monthly series for all regions downloaded.'); }));
   const raw = $('raw-links'); raw.textContent = 'Raw files: ';
   ['meta.json', 'regions.json', 'cells.json', 'monthly.json', 'countries.geojson'].forEach((f, i) => { if (i) raw.append(' \u00b7 '); const a = el('a', undefined, f) as HTMLAnchorElement; a.href = `./data/${f}`; a.target = '_blank'; a.rel = 'noopener'; raw.append(a); });
   // phones: GitHub / tour / theme / cite / Ember live in the overflow menu
   {
     const acts = document.querySelector('.hdr-actions')!, pop = $('more-pop'), more = $('more-btn');
     $('ask-menu-ic').append(createEmber(18, true).el);
-    const items = ['ask-menu', 'gh-btn', 'tour-btn', 'theme-btn', 'cite-menu'].map((id) => $(id));
+    const items = ['ask-menu', 'about-menu', 'gh-btn', 'tour-btn', 'theme-btn', 'cite-menu'].map((id) => $(id));
     const place = (phone: boolean): void => { for (const it of items) { if (phone) { pop.append(it); it.classList.add('in-menu'); } else { acts.insertBefore(it, more); it.classList.remove('in-menu'); } } if (!phone) closeMenu(); };
     const closeMenu = (): void => { pop.hidden = true; more.setAttribute('aria-expanded', 'false'); };
     more.addEventListener('click', () => { pop.hidden = !pop.hidden; more.setAttribute('aria-expanded', String(!pop.hidden)); if (!pop.hidden) (pop.querySelector('a, button') as HTMLElement | null)?.focus(); });
@@ -1007,6 +1094,8 @@ function wireExtras(): void {
     pop.addEventListener('click', (e) => { const t = (e.target as HTMLElement).closest('button, a'); if (t && t.id !== 'theme-btn') setTimeout(closeMenu, 0); });
     const mq = matchMedia('(max-width: 640px)'); place(mq.matches); mq.addEventListener('change', () => place(mq.matches));
     $('ask-menu').addEventListener('click', () => $('ask-btn').click());
+    const about = (): void => { setView('overview', { push: true }); setTimeout(() => heroApi?.reopen(), 0); };
+    $('about-menu').addEventListener('click', about); $('about-btn').addEventListener('click', about);
     $('cite-menu').addEventListener('click', (e) => void copyText(CITATION, (e.currentTarget as HTMLElement).querySelector('.mi-lbl') as HTMLElement, 'Copied', 'Cite'));
   }
   addEventListener('keydown', (e) => {
@@ -1015,30 +1104,67 @@ function wireExtras(): void {
     if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA' || t?.isContentEditable) return;
     if (document.querySelector('.tour')) return;
     if (e.key === '?') { e.preventDefault(); tour(); }
+    else if (e.key === '[') { e.preventDefault(); $('side-toggle').click(); }
     else if (e.key === '/') { e.preventDefault(); $('aoi-region').focus(); }
     else if (e.key === 'r' || e.key === 'R') { e.preventDefault(); fitMap(); }
     else if (e.key === 'f' || e.key === 'F') { e.preventDefault(); void toggleFs(); }
     else if (e.key === ' ' && !(t?.closest('button, a, summary, [role="slider"]')) && replay) { e.preventDefault(); replay.toggle(); }
   });
-  void import('./glossary').then((g) => {
+  void chunk(() => import('./glossary')).then((g) => {
     const q = (s: string) => document.querySelector(s);
+    for (const [id, term] of [['gt-modis', 'MODIS'], ['gt-viirs', 'VIIRS'], ['gt-nrt', 'NRT'], ['gt-harm', 'harmonized'], ['gt-hot', 'hotspot'], ['gt-h3', 'H3 cell'], ['gt-pct', 'percentile']]) g.addInfo(document.getElementById(id), term, term);
     g.addInfo(q('.cal-hero .head h2'), 'MODIS-equivalent', 'MODIS-equivalent'); g.addInfo(q('.cal-hero .head h2'), 'hotspot', 'hotspot');
     g.addInfo(q('#h-month'), 'percentile'); g.addInfo(q('#h-anom'), 'robust z'); g.addInfo(q('#h-ba'), 'harmonized'); g.addInfo(q('#h-unusual'), 'H3 cell');
   });
 }
+let booted = false;
+const FEATURE: Record<string, string> = { overview: 'the dashboard', map: 'the map', calendar: 'the calendar', outlook: 'the outlook', anomalies: 'the anomalies view', compare: 'the comparison', data: 'the data section' };
+function errorToast(feature: string): void {
+  if (document.querySelector('.err-toast')) return;
+  const d = el('div', 'err-toast'); d.setAttribute('role', 'alert');
+  const x = el('button', undefined, '\u00d7') as HTMLButtonElement; x.type = 'button'; x.setAttribute('aria-label', 'Dismiss'); x.addEventListener('click', () => d.remove());
+  d.append(el('span', undefined, `Something went wrong in ${feature}. The rest of the page still works.`), x); document.body.append(d); setTimeout(() => d.remove(), 12000);
+}
+function stale(): void { setStatus('A new version of FireChronicle was published. Reload to continue.', () => location.reload(), 'Reload'); const l = document.getElementById('live'); if (l) l.textContent = 'A new version was published. Reload to continue.'; }
+function installErrorBoundary(): void {
+  // vite:preloadError is deliberately not cancelled: the error then reaches chunk(), which reloads once or throws StaleBuildError
+  window.addEventListener('vite:preloadError', (e) => { console.warn('[firechronicle] chunk preload failed', (e as Event & { payload?: unknown }).payload); });
+  const handle = (msg: string, err: unknown): void => {
+    if (err instanceof StaleBuildError) { stale(); return; }
+    if (/ResizeObserver loop|^Script error\.?$/.test(msg)) return;
+    console.error('[firechronicle]', err ?? msg);
+    if (!booted) { const b = document.getElementById('boot'); if (b && b.dataset.state !== 'error') { b.dataset.state = 'error'; document.getElementById('b-err')!.hidden = false; (document.getElementById('b-retry') as HTMLButtonElement).hidden = false; document.getElementById('b-line')!.textContent = 'EMBER \u00b7 SIGNAL LOST'; } return; }
+    errorToast(FEATURE[view] ?? 'this feature');
+  };
+  window.addEventListener('error', (e) => handle(e.message ?? '', e.error));
+  window.addEventListener('unhandledrejection', (e) => handle(String((e.reason as Error)?.message ?? e.reason), e.reason));
+}
+function lostSignal(msg: string): void {
+  const d = el('div', 'lost-signal'); d.setAttribute('role', 'status');
+  const e = createEmber(64); e.setState('error'); d.append(e.el, el('b', undefined, 'LOST SIGNAL'), el('span', undefined, msg)); document.body.append(d);
+  setTimeout(() => { d.classList.add('out'); setTimeout(() => d.remove(), 250); }, 2000);
+}
+function checkRoute(): void {
+  const r = routeCheck(location.hash, regions.map((x) => x.id), 2000, lastYear);
+  const msgs = [...r.messages];
+  routeNotice = (): void => { if (r.viewBad) { lostSignal(msgs[0]); msgs.splice(0, 1); } if (msgs.length) setTimeout(() => miniToast(msgs.join('. ')), r.viewBad ? 2300 : 0); };
+}
+let routeNotice: (() => void) | null = null;
 async function boot(): Promise<void> {
+  installErrorBoundary(); placeEmber();
   applyThemeMode(themeMode(), false);
   if (import.meta.env.DEV && new URLSearchParams(location.search).has('ember-demo')) { void import('./ui/emberDemo').then((m) => m.showEmberDemo()); }
   enhanceAll();
   trackHeader(); wireShell();
-  setStatus('Loading data\u2026');
+  const steps = createSteps(['meta', 'regions', 'cells', 'monthly', 'map']); bootSteps = steps;
+  const ui = initBootUi(steps), guard = hardTimeout(20000, () => ui.error());
+  steps.onChange(() => { if (steps.finished()) { booted = true; guard.cancel(); ui.hide(); setTimeout(() => routeNotice?.(), 500); } else if (steps.failed()) ui.error(); });
   try {
     let cd: { cells: string[]; country: string[] | null };
-    [meta, regions, countries, cd] = await Promise.all([loadMeta(), loadRegions(), loadCountries(), loadCells()]);
+    [meta, regions, countries, cd] = await Promise.all([track(steps, 'meta', loadMeta()), track(steps, 'regions', loadRegions()), loadCountries(), track(steps, 'cells', loadCells())]);
     cellIds = cd.cells; cellCountry = cd.country;
-  } catch (e) { setStatus(`Could not load the data files (${(e as Error).message}).`, () => void boot()); return; }
+  } catch { guard.cancel(); ui.error(); return; }
   [partial, recent] = await Promise.all([loadPartial(), loadRecent()]);
-  setStatus('');
   lastYear = yearOf(meta.t_last);
   state.y1 = lastYear;
   lat = new Float64Array(cellIds.length); lon = new Float64Array(cellIds.length);
@@ -1063,12 +1189,13 @@ async function boot(): Promise<void> {
     shareCard: async (iso) => { state.aoi = { kind: 'region', id: iso }; state.frameT = null; await refresh(); briefingSi = true; try { await briefing(); } finally { briefingSi = false; } },
   });
   $<HTMLDetailsElement>('method').addEventListener('toggle', () => { if ($<HTMLDetailsElement>('method').open) void ensureExplainer(); });
-  applyHash(); lastKey = stateKey(); syncControls();
+  checkRoute(); applyHash(); lastKey = stateKey(); syncControls();
   setView(parseView(location.hash) ?? 'overview', { write: false });
-  void ensureVisuals().catch((e) => setStatus(`Could not load the map and charts (${(e as Error).message}).`, () => { visuals = null; void refresh(); }));
+  void ensureVisuals().catch((e) => (e instanceof StaleBuildError ? stale() : setStatus(`Could not load the map and charts (${(e as Error).message}).`, () => { visuals = null; void refresh(); })));
   onThemeChange(() => { fireMap?.setDark(prefersDark()); explainerRender?.(); if (series && C) { renderCharts(); renderMap(); } });
-  await refresh();
+  await refresh(); statusTries = 0; steps.done('monthly');
+  if (view !== 'map') steps.done('map'); else setTimeout(() => steps.done('map'), 8000);
   let seen = true; try { seen = localStorage.getItem('fc-tour-done') === '1'; } catch { seen = true; }
-  if (!seen) setTimeout(() => void import('./tour').then((m) => m.startTour()), 900);
+  if (!seen) void (heroApi?.done ?? Promise.resolve()).then(() => setTimeout(() => void chunk(() => import('./tour')).then((m) => m.startTour()), 900));
 }
 void boot();

@@ -10,6 +10,12 @@ maplibregl.setWorkerUrl(new URL('./maplibre/maplibre-gl-worker.mjs', document.ba
 const GLYPHS = 'https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf';
 const STYLE = { color: 'https://tiles.openfreemap.org/styles/liberty', light: 'https://tiles.openfreemap.org/styles/positron', dark: 'https://tiles.openfreemap.org/styles/dark' };
 type FC = { type: 'FeatureCollection'; features: { type: 'Feature'; id: number; properties: { i: number; n: number; v: number; ac: string; an: number }; geometry: { type: 'Polygon'; coordinates: number[][][] } }[] };
+export interface SatFrame {
+  sats: { id: string; name: string; lon: number; lat: number; color: string; ended: boolean }[];
+  swaths: { id: string; color: string; rings: [number, number][][] }[];
+  tracks: { id: string; color: string; lines: [number, number][][] }[];
+}
+const emptyGj = { type: 'FeatureCollection', features: [] as unknown[] };
 const empty: FC = { type: 'FeatureCollection', features: [] };
 
 export class FireMap {
@@ -27,6 +33,9 @@ export class FireMap {
   private borders: unknown = { type: 'FeatureCollection', features: [] };
   private labels: unknown = { type: 'FeatureCollection', features: [] };
   onStyleChange: (() => void) | null = null;
+  onSatClick: ((anchor: HTMLElement) => void) | null = null;
+  private satGj: { swath: unknown; track: unknown } = { swath: emptyGj, track: emptyGj };
+  private satMarkers = new Map<string, maplibregl.Marker>();
   private def: View | null = null;
   onDrift: ((d: boolean) => void) | null = null;
   onResetClick: (() => void) | null = null;
@@ -60,6 +69,15 @@ export class FireMap {
       },
       onRemove() { /* lives with the map */ },
     }, 'top-right');
+    this.map.addControl({
+      onAdd() {
+        const c = document.createElement('div'); c.className = 'maplibregl-ctrl maplibregl-ctrl-group';
+        const b = document.createElement('button'); b.type = 'button'; b.className = 'ctrl-sat'; b.setAttribute('aria-label', 'Satellites layer'); b.title = 'Satellites: orbits, swaths and next passes';
+        b.setAttribute('aria-pressed', 'false'); b.addEventListener('click', () => self.onSatClick?.(b));
+        c.append(b); return c;
+      },
+      onRemove() { /* lives with the map */ },
+    }, 'top-right');
     this.map.on('move', () => this.checkDrift());
     this.map.on('click', (e) => { if (this.drawing) this.onDrawClick?.([e.lngLat.lng, e.lngLat.lat]); });
     this.map.on('dblclick', (e) => { if (this.drawing) { e.preventDefault(); this.onDrawFinish?.(); } });
@@ -78,11 +96,13 @@ export class FireMap {
       { id: 'hex-base', type: 'line', source: 'hex', paint: { 'line-color': bright ? '#ffffff' : '#2a3441', 'line-opacity': this.bm === 'sat' || this.bm === 'relief' || this.bm === 'night' ? 0.07 : 0.14, 'line-width': 0.5 } },
       { id: 'hex-3d', type: 'fill-extrusion', source: 'hex', layout: vis('activity'), filter: ['>', ['get', 'n'], 0], paint: { 'fill-extrusion-color': ['interpolate', ['linear'], ['get', 'n'], ...stops], 'fill-extrusion-height': ['*', ['get', 'n'], this.height], 'fill-extrusion-opacity': op, 'fill-extrusion-vertical-gradient': true } },
       { id: 'hex-anom', type: 'fill-extrusion', source: 'hex', layout: vis('anomaly'), filter: ['>', ['get', 'an'], 0], paint: { 'fill-extrusion-color': ['get', 'ac'], 'fill-extrusion-height': ['*', ['get', 'an'], this.height], 'fill-extrusion-opacity': op, 'fill-extrusion-vertical-gradient': true } },
+      { id: 'sat-swath-fill', type: 'fill', source: 'sat-swath', paint: { 'fill-color': ['get', 'c'], 'fill-opacity': 0.16 } },
+      { id: 'sat-track-line', type: 'line', source: 'sat-track', paint: { 'line-color': ['get', 'c'], 'line-width': 1.5, 'line-opacity': 0.9 } },
       { id: 'shape-line', type: 'line', source: 'shape', paint: { 'line-color': bright || d ? '#ff7d33' : '#b94a07', 'line-width': 2.5 } },
       { id: 'draft-line', type: 'line', source: 'draft', paint: { 'line-color': '#ff7d33', 'line-width': 2, 'line-dasharray': [2, 1] } },
       { id: 'draft-pts', type: 'circle', source: 'draft', filter: ['==', '$type', 'Point'], paint: { 'circle-radius': 4, 'circle-color': '#ff7d33', 'circle-stroke-width': 1.5, 'circle-stroke-color': '#ffffff' } },
     ];
-    return { ...next, sources: { ...(next.sources ?? {}), hex: { type: 'geojson', data: this.fc }, shape: { type: 'geojson', data: this.shapeData() }, draft: { type: 'geojson', data: this.draftData() } }, layers: [...(next.layers ?? []), ...layers] } as never;
+    return { ...next, sources: { ...(next.sources ?? {}), hex: { type: 'geojson', data: this.fc }, shape: { type: 'geojson', data: this.shapeData() }, 'sat-swath': { type: 'geojson', data: this.satGj.swath }, 'sat-track': { type: 'geojson', data: this.satGj.track }, draft: { type: 'geojson', data: this.draftData() } }, layers: [...(next.layers ?? []), ...layers] } as never;
   }
   /** Raster basemaps (satellite, relief, night) are plain style objects with our country borders and labels. */
   private rasterStyle(prod: Product, attribution: string, night: boolean): unknown {
@@ -96,6 +116,28 @@ export class FireMap {
         { id: 'country-labels', type: 'symbol', source: 'clabels', layout: { 'text-field': ['get', 'name'], 'text-font': ['Noto Sans Regular'], 'text-size': 12, 'text-letter-spacing': 0.06, 'text-transform': 'uppercase' }, paint: { 'text-color': '#ffffff', 'text-opacity': 0.85, 'text-halo-color': 'rgba(0,0,0,0.75)', 'text-halo-width': 1.4 } },
       ],
     };
+  }
+  setSatPressed(on: boolean): void { document.querySelector('.ctrl-sat')?.setAttribute('aria-pressed', String(on)); }
+  /** Satellite overlay: swath bands, ground tracks and one marker per satellite; null removes everything. */
+  setSatellites(f: SatFrame | null): void {
+    const swath = { type: 'FeatureCollection', features: (f?.swaths ?? []).flatMap((w) => w.rings.map((r) => ({ type: 'Feature', properties: { c: w.color }, geometry: { type: 'Polygon', coordinates: [r] } }))) };
+    const track = { type: 'FeatureCollection', features: (f?.tracks ?? []).map((t) => ({ type: 'Feature', properties: { c: t.color }, geometry: { type: 'MultiLineString', coordinates: t.lines } })) };
+    this.satGj = { swath, track };
+    (this.map.getSource('sat-swath') as maplibregl.GeoJSONSource | undefined)?.setData(swath as never);
+    (this.map.getSource('sat-track') as maplibregl.GeoJSONSource | undefined)?.setData(track as never);
+    const keep = new Set((f?.sats ?? []).map((x) => x.id));
+    for (const [id, m] of this.satMarkers) if (!keep.has(id)) { m.remove(); this.satMarkers.delete(id); }
+    for (const s of f?.sats ?? []) {
+      let m = this.satMarkers.get(s.id);
+      if (!m) {
+        const el = document.createElement('div'); el.className = 'sat-mk';
+        el.innerHTML = '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><rect x="1" y="9" width="7" height="6" rx="1" fill="none" stroke="currentColor" stroke-width="1.5"/><rect x="16" y="9" width="7" height="6" rx="1" fill="none" stroke="currentColor" stroke-width="1.5"/><rect x="8" y="6" width="8" height="12" rx="3" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="12" cy="12" r="2" fill="currentColor"/></svg><span></span>';
+        m = new maplibregl.Marker({ element: el }).setLngLat([s.lon, s.lat]).addTo(this.map); this.satMarkers.set(s.id, m);
+      }
+      const el = m.getElement(); el.style.color = s.color; el.classList.toggle('ended', s.ended);
+      (el.querySelector('span') as HTMLElement).textContent = s.ended ? `${s.name} \u00b7 ended` : s.name;
+      m.setLngLat([s.lon, s.lat]);
+    }
   }
   setCountries(borders: unknown, labels: unknown): void { this.borders = borders; this.labels = labels; if (this.bm === 'sat' || this.bm === 'relief' || this.bm === 'night') this.applyBasemap(); }
   /** Switch the basemap; camera, pitch, hex layer, outline and anomaly mode all stay. */

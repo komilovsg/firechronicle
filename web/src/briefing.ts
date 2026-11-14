@@ -37,7 +37,8 @@ export function drawBriefing(cv: HTMLCanvasElement, b: Brief): void {
   f(700, 30); g.fillStyle = ink; g.fillText(b.critical, tx, 470);
   f(400, 14, "'IBM Plex Sans', sans-serif"); g.fillStyle = ink3; g.fillText(`Calendar: ${b.unit}, ${b.y0}–${Math.floor(b.tLast / 12) + 2000}. Climatology, not a forecast.`, 48, 560);
   f(400, b.si ? 12 : 14, "'IBM Plex Sans', sans-serif");
-  g.fillText(`FireChronicle · Deep Space AI ${b.si ? '· SI-written · facts from NASA FIRMS data ' : ''}· NASA FIRMS · MODIS + VIIRS harmonized · generated ${new Date().toISOString().slice(0, 10)} · Not an official NASA product`, 48, 592);
+  { const cx = 56, cy = 586; g.save(); g.strokeStyle = ink3; g.fillStyle = ink3; g.lineWidth = 1.3; g.beginPath(); g.arc(cx, cy, 8, 0, Math.PI * 2); g.stroke(); g.lineWidth = 1; g.beginPath(); g.moveTo(cx - 3.5, cy + 3.5); g.lineTo(cx, cy - 3); g.lineTo(cx + 3.5, cy + 3.2); g.stroke(); for (const [x, y] of [[cx - 3.5, cy + 3.5], [cx + 3.5, cy + 3.2]]) { g.beginPath(); g.arc(x, y, 1.3, 0, Math.PI * 2); g.fill(); } g.fillStyle = '#ff7d33'; g.beginPath(); g.arc(cx, cy - 3, 1.5, 0, Math.PI * 2); g.fill(); g.restore(); }
+  g.fillText(`FireChronicle · Deep Space AI ${b.si ? '· SI-written · facts from NASA FIRMS data ' : ''}· NASA FIRMS · MODIS + VIIRS harmonized · generated ${new Date().toISOString().slice(0, 10)} · Not an official NASA product`, 70, 592);
 }
 function wrap(g: CanvasRenderingContext2D, text: string, x: number, y: number, w: number, lh: number): void {
   let line = '', yy = y;

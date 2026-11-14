@@ -10,6 +10,9 @@ const STEPS: Step[] = [
   { target: '[aria-labelledby="h-exp"]', view: 'data', title: 'Export', body: 'Download hotspots as CSV, the monthly series, or a briefing card image to share.' },
   { target: '#ask-btn', title: 'Meet Ember', body: 'Ask questions, or say "show Kazakhstan, August 2021" and the map follows.' },
 ];
+let intro = '';
+/** Adds the live MODIS-retirement sentence (dates from meta) to the first tour step. */
+export function setTourIntro(t: string): void { intro = t; }
 const KEY = 'fc-tour-done';
 export const tourSeen = (): boolean => { try { return localStorage.getItem(KEY) === '1'; } catch { return true; } };
 const markSeen = (): void => { try { localStorage.setItem(KEY, '1'); } catch { /* private mode */ } };
@@ -61,7 +64,7 @@ export function startTour(): void {
     const st = STEPS[i];
     if (st.view) window.dispatchEvent(new CustomEvent('fc-view', { detail: { view: st.view, push: false } }));
     const el = document.querySelector<HTMLElement>(st.target);
-    count.textContent = `Step ${i + 1} of ${STEPS.length}`; title.textContent = st.title; body.textContent = st.body;
+    count.textContent = `Step ${i + 1} of ${STEPS.length}`; title.textContent = st.title; body.textContent = i === 0 && intro ? `${st.body} ${intro}` : st.body;
     back.disabled = i === 0; next.textContent = i === STEPS.length - 1 ? 'Done' : 'Next';
     if (el) { el.style.scrollMarginTop = innerWidth < 700 ? '70px' : '90px'; el.scrollIntoView({ block: 'start', behavior: 'auto' }); }
     place(); (i === STEPS.length - 1 ? next : next).focus({ preventScroll: true });

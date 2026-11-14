@@ -32,8 +32,44 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@100..125,600..800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<noscript><style>#boot{display:none!important}</style></noscript>
+<style>
+#boot{position:fixed;inset:0;z-index:200;display:grid;place-items:center;background:var(--bg,#0b0f14);color:var(--ink,#e9eef5);font:500 12px/1.4 'IBM Plex Mono',ui-monospace,Menlo,monospace;transition:opacity .45s ease}
+#boot.out{opacity:0;pointer-events:none}
+#boot .b-wrap{display:grid;justify-items:center;gap:18px;padding:24px;text-align:center}
+#boot .b-ember{width:96px;height:96px;animation:b-float 3.2s ease-in-out infinite;will-change:transform}
+#boot .b-ember svg{width:100%;height:100%;overflow:visible}
+#boot .b-orbit{transform-origin:48px 48px;animation:b-spin 9s linear infinite}
+#boot .b-eye{animation:b-pulse 1.6s ease-in-out infinite;transform-origin:48px 48px}
+#boot .b-beam{animation:b-scan 2.4s ease-in-out infinite;transform-origin:48px 70px}
+#boot .b-line{letter-spacing:.14em;color:var(--ink-2,#b2bdcb);margin:0}
+#boot .b-bar{width:min(260px,70vw);height:3px;border-radius:3px;background:var(--line,rgba(170,195,225,.16));overflow:hidden}
+#boot .b-bar i{display:block;height:100%;width:0;background:var(--ember,#ff7d33);transition:width .35s cubic-bezier(.2,.8,.2,1)}
+#boot .b-err{margin:0;font:500 14px 'IBM Plex Sans',system-ui,sans-serif;color:var(--ink,#e9eef5)}
+#boot .b-retry{font:600 14px 'IBM Plex Sans',system-ui,sans-serif;padding:10px 20px;border-radius:8px;border:1px solid var(--ember,#ff7d33);background:var(--ember,#ff7d33);color:var(--bg,#0b0f14);cursor:pointer}
+#boot[data-state="error"] .b-eye{animation:none;fill:#8996a7}
+#boot[data-state="error"] .b-ember{animation:none;filter:grayscale(.6)}
+#boot[data-state="error"] .b-bar,#boot[data-state="error"] .b-beam{display:none}
+@keyframes b-float{50%{transform:translateY(-8px)}}@keyframes b-spin{to{transform:rotate(360deg)}}
+@keyframes b-pulse{50%{opacity:.45;transform:scale(.8)}}@keyframes b-scan{0%,100%{opacity:0;transform:scaleY(.2)}50%{opacity:.7;transform:scaleY(1)}}
+@media (prefers-reduced-motion:reduce){#boot .b-ember,#boot .b-orbit,#boot .b-eye,#boot .b-beam{animation:none}#boot{transition:opacity .2s}}
+</style>
 </head>
 <body>
+<noscript><div style="position:fixed;inset:0;z-index:300;display:grid;place-items:center;padding:24px;background:#0b0f14;color:#e9eef5;font:16px/1.5 system-ui,sans-serif;text-align:center"><div style="max-width:460px"><svg viewBox="0 0 96 96" width="96" height="96" aria-hidden="true"><ellipse cx="48" cy="48" rx="44" ry="16" fill="none" stroke="#ff7d33" stroke-opacity=".4" stroke-width="1.5" stroke-dasharray="4 6"/><g fill="#19212c" stroke="#8996a7" stroke-width="1.5"><rect x="8" y="38" width="22" height="20" rx="2"/><rect x="66" y="38" width="22" height="20" rx="2"/><rect x="30" y="30" width="36" height="36" rx="10"/></g><circle cx="48" cy="48" r="8" fill="#ff7d33"/></svg><h1 style="font-size:22px;margin:12px 0 8px">FireChronicle</h1><p>FireChronicle needs JavaScript to show the interactive map and charts. Data: NASA FIRMS.</p><p><a style="color:#7db3ff" href="https://github.com/komilovsg/firechronicle#readme">Read about the project on GitHub</a></p></div></div></noscript>
+<div id="boot" role="status" aria-live="polite" data-state="load"><div class="b-wrap">
+<div class="b-ember" id="b-ember"><svg viewBox="0 0 96 96" aria-hidden="true" focusable="false">
+<ellipse class="b-orbit" cx="48" cy="48" rx="44" ry="16" fill="none" stroke="#ff7d33" stroke-opacity=".35" stroke-width="1.5" stroke-dasharray="4 6"/>
+<g fill="#19212c" stroke="#8996a7" stroke-width="1.5"><rect x="8" y="38" width="22" height="20" rx="2"/><rect x="66" y="38" width="22" height="20" rx="2"/><rect x="30" y="30" width="36" height="36" rx="10"/></g>
+<path d="M19 38v20M8 48h22M77 38v20M66 48h22" stroke="#8996a7" stroke-opacity=".6"/>
+<path class="b-beam" d="M40 70h16l8 20H32z" fill="#ff7d33" fill-opacity=".25"/>
+<circle class="b-eye" cx="48" cy="48" r="8" fill="#ff7d33"/><path d="M48 30V18" stroke="#8996a7" stroke-width="1.5"/><circle cx="48" cy="16" r="2.5" fill="#ff7d33"/></svg></div>
+<p class="b-line" id="b-line">EMBER · LINKING TO NASA FIRMS</p>
+<div class="b-bar" aria-hidden="true"><i id="b-fill"></i></div>
+<p class="b-err" id="b-err" hidden>Couldn't reach the data. Check your connection.</p>
+<button type="button" class="b-retry" id="b-retry" hidden>Retry</button>
+</div></div>
+<div class="sr" id="live" role="status" aria-live="polite"></div>
 <a class="skip" href="#panel">Skip to analytics</a>
 <header class="top" id="top">
   <div class="tb">
@@ -55,6 +91,7 @@
       <button type="button" id="theme-btn" class="iconbtn mi" aria-label="Theme: System" title="Theme: System"><span class="mi-ic"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="9"/><path d="M12 3v18a9 9 0 0 0 0-18z" fill="currentColor" stroke="none"/></svg></span><span class="mi-lbl">Theme</span><span class="mi-val" id="theme-val">System</span></button>
       <button type="button" id="ask-menu" class="iconbtn mi menu-only" aria-label="Ask Ember" title="Ask Ember"><span class="mi-ic" id="ask-menu-ic"></span><span class="mi-lbl">Ask Ember</span></button>
       <button type="button" id="cite-menu" class="iconbtn mi menu-only" aria-label="Cite" title="Copy citation"><span class="mi-ic"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M10 7H6.5A1.5 1.5 0 0 0 5 8.5V12a2 2 0 0 0 2 2h2.5M9.5 14c0 2-1 3.2-3 4M19 7h-3.5A1.5 1.5 0 0 0 14 8.5V12a2 2 0 0 0 2 2h2.5M18.5 14c0 2-1 3.2-3 4"/></svg></span><span class="mi-lbl">Cite</span></button>
+      <button type="button" id="about-menu" class="iconbtn mi menu-only" aria-label="About FireChronicle" title="About"><span class="mi-ic"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 7.8v.1"/></svg></span><span class="mi-lbl">About</span></button>
       <button type="button" id="more-btn" class="iconbtn" aria-label="More" aria-haspopup="menu" aria-expanded="false" title="More"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="5" cy="12" r="1" fill="currentColor"/><circle cx="12" cy="12" r="1" fill="currentColor"/><circle cx="19" cy="12" r="1" fill="currentColor"/></svg></button>
       <div class="more-pop" id="more-pop" role="menu" hidden></div>
     </div>
@@ -82,8 +119,8 @@
           <span class="fr-detail fr-cd" id="fr-cd"><span id="fr-cd-label">Next update in</span> <span class="digits" id="fr-digits"></span></span>
           <span class="fr-short" id="fr-short"></span>
         </button>
-      <div class="side-row"><p class="side-credit" title="Deep Space AI"><span class="sc-full">Deep Space AI</span><span class="sc-mono" aria-hidden="true">DSI</span></p>
-      <button type="button" id="side-toggle" class="side-toggle" aria-label="Collapse the sidebar" aria-pressed="false"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m14 6-6 6 6 6"/></svg></button></div>
+      <button type="button" id="about-btn" class="nav-item about-item" title="About FireChronicle"><svg class="ni" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 7.8v.1"/></svg><span class="nl">About</span></button>
+      <button type="button" id="side-toggle" class="side-row" aria-controls="side" aria-expanded="true" aria-label="Collapse sidebar" title="Collapse sidebar ([)"><span class="team-mark" aria-hidden="true"><svg class="ni team-svg" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="9.5"/><path d="M8 15.5 12 8.5l4.5 6.5" stroke-width="1.25"/><circle cx="8" cy="15.5" r="1.4" fill="currentColor" stroke="none"/><circle cx="16.5" cy="15" r="1.4" fill="currentColor" stroke="none"/><circle cx="12" cy="8.5" r="1.6" fill="var(--ember)" stroke="none"/></svg></span><span class="side-credit" title="Deep Space AI"><span class="sc-full">Deep Space AI</span></span><span class="side-chev"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m14 6-6 6 6 6"/></svg></span></button>
     </div>
   </nav>
   <main class="stage" id="panel" tabindex="-1">
@@ -119,6 +156,7 @@
         </div>
         <div class="mapwrap">
       <div id="map" aria-label="Map of fire hotspot density by H3 cell"></div>
+      <div class="map-ph" id="map-ph" data-mode="full"><div class="mp-box"><span id="mp-ember" aria-hidden="true"></span><p class="mp-cap" id="mp-cap">LOADING MAP · NASA FIRMS</p><p class="mp-err" id="mp-err" hidden>Map tiles unavailable. Try another map style.</p><button type="button" class="btn mp-btn" id="mp-btn" hidden>Use Monochrome</button></div></div>
       <div class="maplegend" id="maplegend" aria-hidden="true"></div>
       <div class="maphint" id="maphint">Tip: choose a country or draw an area to start</div>
       <div class="maplayers seg" id="maplayers" role="group" aria-label="Map layer">
@@ -223,13 +261,14 @@
       <p class="note" id="raw-links"></p>
       <progress id="exp-progress" max="1" value="0" hidden></progress>
     </section>
+      <p class="note terms" id="gloss-terms">Terms: <span id="gt-modis"></span><span id="gt-viirs"></span><span id="gt-nrt"></span><span id="gt-harm"></span><span id="gt-hot"></span><span id="gt-h3"></span><span id="gt-pct"></span></p>
       <details class="block method" id="method">
       <summary><h2 id="h-method">Methodology</h2></summary>
       <div id="method-body"></div>
       <div id="why" class="why"></div>
     </details>
       <footer class="foot">
-      <p>FireChronicle &mdash; built by <strong>Deep Space AI</strong> (Dushanbe, Tajikistan) for the NASA Space Apps Challenge 2026, challenge &lsquo;Harmonization of MODIS and VIIRS Hot Spots&rsquo;.</p>
+      <p>FireChronicle &mdash; built by <strong class="team-name"><svg class="team-svg inl" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="9.5"/><path d="M8 15.5 12 8.5l4.5 6.5" stroke-width="1.25"/><circle cx="8" cy="15.5" r="1.4" fill="currentColor" stroke="none"/><circle cx="16.5" cy="15" r="1.4" fill="currentColor" stroke="none"/><circle cx="12" cy="8.5" r="1.6" fill="var(--ember)" stroke="none"/></svg> Deep Space AI</strong> (Dushanbe, Tajikistan) for the NASA Space Apps Challenge 2026, challenge &lsquo;Harmonization of MODIS and VIIRS Hot Spots&rsquo;.</p>
       <p class="links"><a href="https://github.com/komilovsg/firechronicle" target="_blank" rel="noopener noreferrer">GitHub repo</a> &middot; <a href="https://github.com/komilovsg/firechronicle/issues" target="_blank" rel="noopener noreferrer">Issues</a> &middot; <button type="button" class="linkbtn" id="cite-foot">Cite</button></p>
       <p>Data: NASA FIRMS. Not an official NASA product.</p>
       <p class="small">Basemap &copy; OpenStreetMap contributors, OpenFreeMap.</p>

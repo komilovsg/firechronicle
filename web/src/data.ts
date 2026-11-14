@@ -34,3 +34,11 @@ export async function loadRecent(): Promise<import('./lib/dashboard').Recent | n
     return (await import('./lib/dashboard')).parseRecent(await r.json());
   } catch { return null; }
 }
+/** tle.json is optional (CelesTrak elements, refreshed daily by the update job). */
+export async function loadTle(): Promise<import('./lib/orbits').Tle | null> {
+  try {
+    const r = await fetch('./data/tle.json', { cache: 'no-cache' });
+    if (!r.ok) return null;
+    return (await import('./lib/orbits')).parseTle(await r.json());
+  } catch { return null; }
+}

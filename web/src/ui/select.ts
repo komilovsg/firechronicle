@@ -77,6 +77,10 @@ export function enhanceSelect(sel: HTMLSelectElement): void {
   }
   function onKeys(e: KeyboardEvent): void {
     if (!ui) return;
+    if (sel.dataset.quick === 'years' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      const k = ({ a: 'all', t: '10', f: '5' } as Record<string, string>)[e.key.toLowerCase()];
+      if (k) { e.preventDefault(); document.dispatchEvent(new CustomEvent('fc-years', { detail: { kind: k } })); close(true); return; }
+    }
     const dis = opts().map((o) => o.disabled), labels = opts().map((o) => o.textContent ?? '');
     let a = ui.active, handled = true;
     if (e.key === 'ArrowDown') a = nextIndex(dis, a, 1);
@@ -110,7 +114,7 @@ export function enhanceSelect(sel: HTMLSelectElement): void {
     list.textContent = '';
     if (sel.dataset.quick === 'years') {
       const q = document.createElement('div'); q.className = 'csel-quick';
-      for (const [k, t] of [['all', 'All years'], ['10', 'Last 10 years'], ['5', 'Last 5 years']] as const) {
+      for (const [k, t] of [['all', 'All years (A)'], ['10', 'Last 10 years (T)'], ['5', 'Last 5 years (F)']] as const) {
         const b = document.createElement('button'); b.type = 'button'; b.textContent = t;
         b.addEventListener('mousedown', (e) => e.preventDefault());
         b.addEventListener('click', () => { document.dispatchEvent(new CustomEvent('fc-years', { detail: { kind: k } })); close(true); });
