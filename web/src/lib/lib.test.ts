@@ -222,3 +222,61 @@ describe('validation helpers', () => {
     expect(cpToX('2011-01')).toBeCloseTo(2011.0417, 3); expect(cpToX('bad')).toBeNull();
   });
 });
+
+import { anomalyNow, topUnusual, anomalyBin } from './anomalyNow';
+import { fmtInt } from './format';
+import { encodeCmp, parseCmp } from './cmp';
+
+describe('anomalyNow', () => {
+  // tFirst = 0, target = 12*10 + 6 (Jul of year 10); two cells
+  const T = 126;
+  const rows: { c: number; t: number; v: number }[] = [];
+  for (let y = 0; y < 10; y++) rows.push({ c: 0, t: 12 * y + 6, v: 10 + y }); // cell 0: 10..19 every year
+  rows.push({ c: 0, t: T, v: 100 }); // above everything
+  for (let y = 0; y < 3; y++) rows.push({ c: 1, t: 12 * y + 6, v: 5 }); // cell 1: only 3 years of data
+  rows.push({ c: 1, t: T, v: 50 });
+  rows.push({ c: 0, t: T - 1, v: 999 }); // other month, must be ignored
+  const m = { c: rows.map((r) => r.c), t: rows.map((r) => r.t), modis: rows.map(() => 0), snpp: rows.map(() => 0), n20: rows.map(() => 0), n21: rows.map(() => 0), harm: rows.map((r) => r.v), lo: rows.map(() => 0), hi: rows.map(() => 0) };
+  const idx = new CellIndex(m as unknown as Monthly, 3, 200);
+  it('percentile against own history; thin history is NaN', () => {
+    const a = anomalyNow(idx, [0, 1, 2], T, 0);
+    expect(a.nPast).toBe(10);
+    expect(a.pct[0]).toBe(100); expect(a.nYears[0]).toBe(10);
+    expect(a.pct[1]).toBeNaN(); expect(a.nYears[1]).toBe(3);
+    expect(a.pct[2]).toBeNaN();
+  });
+  it('zero value ranks at the bottom; ties use mid-rank', () => {
+    const a = anomalyNow(idx, [0], T + 12, 0); // no row at target for cell 0
+    expect(a.value[0]).toBe(0); expect(a.pct[0]).toBe(0);
+    const eqRows = { ...m, harm: m.harm.map((v, i) => (m.c[i] === 0 && m.t[i] === T ? 14 : v)) };
+    const b = anomalyNow(new CellIndex(eqRows as unknown as Monthly, 3, 200), [0], T, 0);
+    expect(b.pct[0]).toBe(((4 + 0.5 * 1) / 10) * 100); // 10..13 below, 14 equal
+  });
+  it('top list and bins', () => {
+    const a = anomalyNow(idx, [0, 1], T, 0);
+    expect(topUnusual(a, [0, 1], 5).map((x) => x.cell)).toEqual([0]);
+    expect([anomalyBin(NaN), anomalyBin(5), anomalyBin(20), anomalyBin(50), anomalyBin(80), anomalyBin(95)]).toEqual([-1, 0, 1, 2, 3, 4]);
+  });
+});
+describe('format and compare hash', () => {
+  it('thin separators', () => { expect(fmtInt(1234567)).toBe('1 234 567'); expect(fmtInt(999)).toBe('999'); expect(fmtInt(-1500)).toBe('−1 500'); expect(fmtInt(NaN)).toBe('–'); });
+  it('cmp round trip and rejection', () => {
+    for (const a of [{ kind: 'region', id: 'KAZ' }, { kind: 'polygon', pts: [[60, 40], [61, 41], [62, 40.5]] }, { kind: 'circle', lat: 41.3, lon: 69.2, r: 100 }] as const) expect(parseCmp('#' + encodeCmp(a as never))).toEqual(a);
+    expect(parseCmp('#b=c:99,0,10')).toBeNull(); expect(parseCmp('#b=<x>')).toBeNull(); expect(parseCmp('#a=KAZ')).toBeNull(); expect(parseCmp('#b=p:1,2;3,4')).toBeNull();
+  });
+});
+
+import { pointInPolys, geometryPolys } from './geo';
+describe('multipolygon AOI', () => {
+  const sq = (x0: number, y0: number, s: number): [number, number][] => [[x0, y0], [x0 + s, y0], [x0 + s, y0 + s], [x0, y0 + s], [x0, y0]];
+  const multi = geometryPolys({ type: 'MultiPolygon', coordinates: [[sq(0, 0, 10), sq(4, 4, 2)], [sq(20, 0, 5)]] });
+  it('finds points in every part and excludes holes', () => {
+    expect(pointInPolys(1, 1, multi)).toBe(true);
+    expect(pointInPolys(22, 2, multi)).toBe(true);
+    expect(pointInPolys(5, 5, multi)).toBe(false);
+    expect(pointInPolys(15, 5, multi)).toBe(false);
+  });
+  it('wraps a plain Polygon', () => {
+    expect(pointInPolys(1, 1, geometryPolys({ type: 'Polygon', coordinates: [sq(0, 0, 10)] }))).toBe(true);
+  });
+});

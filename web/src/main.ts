@@ -2,7 +2,7 @@ import './style.css';
 import { cellToLatLng } from 'h3-js';
 import { loadMeta, loadRegions, loadCountries, loadCells, loadMonthly, type Countries } from './data';
 import { CellIndex, seriesFromRegion, sensorTs, type Meta, type Region, type Series } from './lib/series';
-import { pointInPolygon, circlePolygon, bboxOf, type Pt } from './lib/geo';
+import { circlePolygon, bboxOf, geometryPolys, pointInPolys, type Poly, type Pt } from './lib/geo';
 import { encodeHash, parseHash, MAX_VERTS, type AoiSpec, type CalMode } from './lib/hash';
 import { MONTH_FULL, MONTH_ABBR, daysInMonth, tFromYM, tLabel, yearOf } from './lib/time';
 import { percentile } from './lib/stats';
@@ -24,7 +24,7 @@ let meta: Meta, regions: Region[], countries: Countries, cellIds: string[] = [];
 let lat: Float64Array, lon: Float64Array;
 let index: CellIndex | null = null;
 let monthlyPromise: Promise<void> | null = null;
-let aoiCells: number[] = [], aoiName = '', aoiRing: Pt[] | null = null;
+let aoiCells: number[] = [], aoiName = '', aoiRing: Pt[] | null = null, aoiPolys: Poly[] | null = null;
 let series: Series | null = null;
 let monthVmax = 1;
 let fireMap: FireMap | undefined, replay: Replay | undefined;
@@ -52,18 +52,20 @@ function setStatus(msg: string, retry?: () => void): void {
 const chart = (key: string, id: string): Chart => (charts[key] ??= C!.makeChart($(id)));
 
 /* ---------- AOI ---------- */
-function ringForAoi(a: AoiSpec): Pt[] | null {
-  if (a.kind === 'polygon') return a.pts;
-  if (a.kind === 'circle') return circlePolygon(a.lat, a.lon, a.r);
+function polysForAoi(a: AoiSpec): Poly[] | null {
+  if (a.kind === 'polygon') return [[a.pts]];
+  if (a.kind === 'circle') return [[circlePolygon(a.lat, a.lon, a.r)]];
   if (a.id === 'central-asia') return null;
   const f = countries.features.find((x) => x.properties.id === a.id);
-  return f ? (f.geometry.coordinates[0] as Pt[]) : null;
+  return f ? geometryPolys(f.geometry as { type: string; coordinates: unknown }) : null;
 }
 function computeAoi(): void {
   const a = state.aoi;
-  aoiRing = ringForAoi(a);
+  aoiPolys = polysForAoi(a);
+  // outline and map bounds use the largest outer ring (the mainland for multi-part countries)
+  aoiRing = aoiPolys ? aoiPolys.map((p) => p[0]).reduce((x, y) => (y.length > x.length ? y : x)) : null;
   aoiCells = [];
-  for (let i = 0; i < cellIds.length; i++) if (!aoiRing || pointInPolygon(lon[i], lat[i], aoiRing)) aoiCells.push(i);
+  for (let i = 0; i < cellIds.length; i++) if (!aoiPolys || pointInPolys(lon[i], lat[i], aoiPolys)) aoiCells.push(i);
   if (a.kind === 'region') aoiName = a.id === 'central-asia' ? meta.region.name : (countries.features.find((f) => f.properties.id === a.id)?.properties.name ?? a.id);
   else if (a.kind === 'polygon') aoiName = `Custom polygon, ${a.pts.length} points`;
   else aoiName = `${a.r} km around ${a.lat.toFixed(2)}, ${a.lon.toFixed(2)}`;

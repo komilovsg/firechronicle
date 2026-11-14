@@ -7,6 +7,19 @@ export function pointInPolygon(lon: number, lat: number, ring: Pt[]): boolean {
   }
   return inside;
 }
+/** A polygon as [outer ring, ...holes]. */
+export type Poly = Pt[][];
+
+/** GeoJSON Polygon or MultiPolygon → list of polygons. Many countries are MultiPolygons. */
+export function geometryPolys(g: { type: string; coordinates: unknown }): Poly[] {
+  return g.type === 'MultiPolygon' ? (g.coordinates as Poly[]) : [g.coordinates as Poly];
+}
+
+/** Inside any polygon's outer ring and outside all of that polygon's holes. */
+export function pointInPolys(lon: number, lat: number, polys: Poly[]): boolean {
+  return polys.some((p) => pointInPolygon(lon, lat, p[0]) && !p.slice(1).some((h) => pointInPolygon(lon, lat, h)));
+}
+
 export function circlePolygon(lat: number, lon: number, rKm: number, n = 64): Pt[] {
   const R = 6371, d = rKm / R, la = (lat * Math.PI) / 180, lo = (lon * Math.PI) / 180, out: Pt[] = [];
   for (let i = 0; i < n; i++) {
