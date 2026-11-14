@@ -9,6 +9,7 @@ import { initBootUi } from './bootUi';
 import { retryControl } from './ui/retryUi';
 import { createMapStatus, placeEmber, type MapStatus } from './ui/mapStatus';
 import { routeCheck } from './lib/route';
+import { renderOutlook2 } from './outlookUi';
 import { chunk, StaleBuildError } from './lib/chunk';
 import { cellToLatLng, cellToBoundary } from 'h3-js';
 import { loadMeta, loadRegions, loadCountries, loadCells, loadMonthly, loadPartial, loadRecent, type Countries, type Partial } from './data';
@@ -289,7 +290,7 @@ function renderCharts(): void {
   const tot = (a: Float64Array, y: number) => { let x = 0; for (let t = tFromYM(y, 1); t <= tFromYM(y, 12); t++) x += a[t]; return x; };
   $('ba-chart').setAttribute('aria-label', `Annual totals, naive splice versus harmonized. 2011: naive ${fmt(tot(s.naive, 2011))}, harmonized ${fmt(tot(s.harm, 2011))}. 2012: naive ${fmt(tot(s.naive, 2012))}, harmonized ${fmt(tot(s.harm, 2012))}.`);
   replay?.setData(harm, meta.t_first, meta.t_last, th); hudPing();
-  renderCompareView(); renderDash(); renderLast24();
+  renderCompareView(); renderDash(); renderLast24(); renderOutlook2($('ol2'), { arr: harm, sp, tNrt: meta.t_nrt_from, C: C!, chart, th });
 }
 
 function renderCompareView(): void {

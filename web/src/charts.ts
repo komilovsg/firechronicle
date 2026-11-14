@@ -204,3 +204,40 @@ export function last24Option(arr: Float64Array, cl: Climatology, tLast: number, 
     ],
   };
 }
+
+/** This year's cumulative total against the cumulative curves of the last 10 complete years (median line, P10-P90 band); NRT months dashed. */
+export function paceOption(p: import('./lib/outlook2').Pace, nrtMonth: number, th: Theme): Opt {
+  const act = MONTH_ABBR.map((_, i) => (i < p.actual.length ? p.actual[i] : null));
+  const k = Math.min(Math.max(nrtMonth, 1), 13);
+  const solid = act.map((v, i) => (i < k - 1 ? v : null)), dashed = act.map((v, i) => (i >= k - 2 ? v : null));
+  const none = { show: false };
+  return {
+    ...base(th), aria: { enabled: false },
+    legend: { data: [String(p.year), 'Median of last 10 years', 'P10–P90'], top: 0, left: 0, textStyle: { color: th.ink2, fontSize: 11 }, itemHeight: 8, itemWidth: 16 },
+    tooltip: { ...base(th).tooltip, trigger: 'axis', formatter: (ps: Opt[]) => { const i = ps[0].dataIndex; return `<b>Through ${MONTH_ABBR[i]}</b><br>${p.year}: ${act[i] === null ? 'n/a' : fmt(act[i] as number)}${i >= k - 1 && act[i] !== null ? ' (provisional)' : ''}<br>Median ${fmt(p.median[i])}<br>P10–P90 ${fmt(p.p10[i])}–${fmt(p.p90[i])}`; } },
+    grid: { left: 56, right: 12, top: 30, bottom: 26 },
+    xAxis: { type: 'category', data: MONTH_ABBR, boundaryGap: false, ...axisCommon(th), splitLine: { show: false } },
+    yAxis: { type: 'value', ...axisCommon(th), axisLabel: { color: th.ink3, fontSize: 11, fontFamily: mono, formatter: (v: number) => fmt(v) } },
+    series: [
+      { name: 'P10', type: 'line', stack: 'b', data: p.p10, symbol: 'none', lineStyle: { opacity: 0 }, silent: true, tooltip: none },
+      { name: 'P10–P90', type: 'line', stack: 'b', data: p.p90.map((v, i) => v - p.p10[i]), symbol: 'none', lineStyle: { opacity: 0 }, areaStyle: { color: th.ink3, opacity: 0.25 }, silent: true, tooltip: none },
+      { name: 'Median of last 10 years', type: 'line', data: p.median, symbol: 'none', lineStyle: { width: 1.5, color: th.ink3, type: 'dotted' } },
+      { name: String(p.year), type: 'line', data: solid, symbol: 'circle', symbolSize: 5, lineStyle: { width: 2.2, color: th.ember }, itemStyle: { color: th.ember, borderColor: th.surface, borderWidth: 2 } },
+      { name: `${p.year} (provisional)`, type: 'line', data: dashed, symbol: 'circle', symbolSize: 5, lineStyle: { width: 2.2, color: th.ember, type: 'dashed' }, itemStyle: { color: th.ember, borderColor: th.surface, borderWidth: 2 }, tooltip: none },
+    ],
+  };
+}
+/** Season start / middle / end (day of year) per complete year. */
+export function shiftOption(s: import('./lib/outlook2').Shift, th: Theme): Opt {
+  const doyLabel = (d: number): string => { const cum = [0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334, 365]; let i = 0; while (i < 11 && d >= cum[i + 1]) i++; return `${MONTH_ABBR[i]} ${Math.round(d - cum[i]) + 1}`; };
+  const mk = (name: string, data: number[], color: string): Opt => ({ name, type: 'line', data, symbol: 'circle', symbolSize: 6, lineStyle: { width: 1.5, color, opacity: 0.6 }, itemStyle: { color, borderColor: th.surface, borderWidth: 1.5 } });
+  return {
+    ...base(th), aria: { enabled: false },
+    legend: { data: ['Start (10 %)', 'Middle (50 %)', 'End (90 %)'], top: 0, left: 0, textStyle: { color: th.ink2, fontSize: 11 }, itemHeight: 8, itemWidth: 16 },
+    tooltip: { ...base(th).tooltip, trigger: 'axis', formatter: (ps: Opt[]) => { const i = ps[0].dataIndex; return `<b>${s.years[i]}</b><br>Start ${doyLabel(s.start[i])}<br>Middle ${doyLabel(s.mid[i])}<br>End ${doyLabel(s.end[i])}`; } },
+    grid: { left: 52, right: 12, top: 30, bottom: 26 },
+    xAxis: { type: 'category', data: s.years.map(String), boundaryGap: false, ...axisCommon(th), splitLine: { show: false }, axisLabel: { color: th.ink3, fontSize: 11, fontFamily: mono, interval: 4 } },
+    yAxis: { type: 'value', ...axisCommon(th), scale: true, axisLabel: { color: th.ink3, fontSize: 11, fontFamily: mono, formatter: (v: number) => doyLabel(v) } },
+    series: [mk('Start (10 %)', s.start, th.modis), mk('Middle (50 %)', s.mid, th.ember), mk('End (90 %)', s.end, th.viirs)],
+  };
+}
