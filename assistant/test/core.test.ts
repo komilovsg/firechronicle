@@ -201,6 +201,9 @@ describe("cors and input", () => {
     expect(corsDecision("https://komilovsg.github.io.evil.com").allowed).toBe(false);
     expect(corsDecision(null).allowed).toBe(true);
   });
+  it("exposes retry-after to browsers", () => {
+    expect(corsDecision("https://komilovsg.github.io").headers["access-control-expose-headers"]).toBe("retry-after");
+  });
   it("cleans questions", () => {
     expect(cleanQuestion("  hello\u0000 world \n")).toBe("hello world");
     expect(cleanQuestion("ab")).toBeNull();
@@ -208,9 +211,10 @@ describe("cors and input", () => {
     expect(cleanQuestion(5)).toBeNull();
   });
   it("rate decision", () => {
-    expect(rateDecision(4, 0)).toBe("ok");
-    expect(rateDecision(5, 0)).toBe("minute");
-    expect(rateDecision(0, 30)).toBe("day");
+    expect(rateDecision(9, 0)).toBe("ok");
+    expect(rateDecision(10, 0)).toBe("minute");
+    expect(rateDecision(0, 149)).toBe("ok");
+    expect(rateDecision(0, 150)).toBe("day");
   });
 });
 

@@ -8,7 +8,7 @@ import { CHAT_MODELS, chat, embedQuery, fmtUtc, healthModels } from "./gemini.ts
 import { applyFacts, getLiveFacts, type FactsStatus } from "./live.ts";
 import { NAV_SCHEMA, NAV_SYSTEM, applyNavKeywords, validateNav } from "./nav.ts";
 import {
-  MAX_BODY_BYTES, bumpGlobal, checkRate, cleanQuestion, corsDecision, sha256Hex,
+  MAX_BODY_BYTES, bumpGlobal, countRate, cleanQuestion, peekRate, corsDecision, sha256Hex,
 } from "./security.ts";
 
 interface Env {
@@ -89,7 +89,7 @@ async function handleAsk(req: Request, env: Env, cors: Record<string, string>, d
 
   if (!debugOk) {
     const ip = req.headers.get("cf-connecting-ip") ?? "unknown";
-    const rate = await checkRate(env.KV, ip, env.RATE_SALT ?? "salt");
+    const rate = await peekRate(env.KV, ip, env.RATE_SALT ?? "salt");
     if (rate !== "ok") {
       return json({
         error: rate === "minute" ? "Too many questions. Please wait a minute and try again." : "Daily question limit reached. Please try again tomorrow.",
@@ -156,6 +156,7 @@ async function handleAsk(req: Request, env: Env, cors: Record<string, string>, d
   let usedModel: string | undefined;
   dbg.attempts = [];
   for (let pass = 0; pass < 2; pass++) {
+    if (pass === 0 && !debugOk) await countRate(env.KV, req.headers.get("cf-connecting-ip") ?? "unknown", env.RATE_SALT ?? "salt");
     if (!(await bumpGlobal(env.KV))) {
       return finish({ answer: "The assistant has reached today's free limit. It resets at 00:00 UTC.", refused: true, reason: "limit", sources: [] }, false, "global_cap");
     }
@@ -202,12 +203,13 @@ async function handleNav(req: Request, env: Env, cors: Record<string, string>, d
   const q = cleanQuestion(body.data.q);
   if (!q) return json({ error: "Request must be 3-500 characters." }, 400, cors);
   if (!debugOk) {
-    const rate = await checkRate(env.KV, req.headers.get("cf-connecting-ip") ?? "unknown", env.RATE_SALT ?? "salt");
+    const rate = await peekRate(env.KV, req.headers.get("cf-connecting-ip") ?? "unknown", env.RATE_SALT ?? "salt");
     if (rate !== "ok") return json({ error: "Too many requests. Please wait and try again.", refused: true, reason: "rate_limit" }, 429, { ...cors, "retry-after": "60" });
   }
   const key = `nav:v2:${await sha256Hex(q.toLowerCase())}`;
   const hit = await env.KV.get(key, "json");
   if (hit) return json({ ...(hit as object), cached: true }, 200, cors);
+  if (!debugOk) await countRate(env.KV, req.headers.get("cf-connecting-ip") ?? "unknown", env.RATE_SALT ?? "salt");
   if (!(await bumpGlobal(env.KV))) return json({ refused: true, reason: "limit" }, 200, cors);
   const user = `<request>${q.replace(/</g, "‹").replace(/>/g, "›")}</request>`;
   const r = await chat(env, { system: NAV_SYSTEM, user, schema: NAV_SCHEMA });

@@ -13,6 +13,7 @@ export function corsDecision(origin: string | null): CorsDecision {
       "access-control-allow-methods": "GET, POST, OPTIONS",
       "access-control-allow-headers": "content-type, x-debug-token",
       "access-control-max-age": "86400",
+      "access-control-expose-headers": "retry-after",
       vary: "Origin",
     },
   };
@@ -32,8 +33,8 @@ export async function sha256Hex(s: string): Promise<string> {
   return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-export const PER_MINUTE = 5;
-export const PER_DAY = 30;
+export const PER_MINUTE = 10;
+export const PER_DAY = 150;
 export const GLOBAL_DAILY_CAP = 1500;
 
 /** Pure decision helper so it can be unit-tested. */
@@ -49,16 +50,23 @@ async function bump(kv: KVNamespace, key: string, ttl: number): Promise<number> 
   return n;
 }
 
-export async function checkRate(kv: KVNamespace, ip: string, salt: string, now = Date.now()): Promise<"ok" | "minute" | "day"> {
-  const h = (await sha256Hex(`${salt}:${ip}`)).slice(0, 24);
-  const minute = Math.floor(now / 60000);
-  const day = new Date(now).toISOString().slice(0, 10);
-  const mk = `rl:m:${h}:${minute}`, dk = `rl:d:${h}:${day}`;
-  const m = Number((await kv.get(mk)) ?? 0), d = Number((await kv.get(dk)) ?? 0);
-  const dec = rateDecision(m, d);
-  if (dec !== "ok") return dec;
-  await Promise.all([kv.put(mk, String(m + 1), { expirationTtl: 120 }), kv.put(dk, String(d + 1), { expirationTtl: 90000 })]);
-  return "ok";
+function rateKeys(h: string, now: number) {
+  return { mk: `rl:m:${h}:${Math.floor(now / 60000)}`, dk: `rl:d:${h}:${new Date(now).toISOString().slice(0, 10)}` };
+}
+const ipHash = async (ip: string, salt: string) => (await sha256Hex(`${salt}:${ip}`)).slice(0, 24);
+
+/** Read-only check: does this IP still have budget? Does not consume anything. */
+export async function peekRate(kv: KVNamespace, ip: string, salt: string, now = Date.now()): Promise<"ok" | "minute" | "day"> {
+  const { mk, dk } = rateKeys(await ipHash(ip, salt), now);
+  const [m, d] = await Promise.all([kv.get(mk), kv.get(dk)]);
+  return rateDecision(Number(m ?? 0), Number(d ?? 0));
+}
+
+/** Consume one unit. Call only when a real chat-model call is about to be made. */
+export async function countRate(kv: KVNamespace, ip: string, salt: string, now = Date.now()): Promise<void> {
+  const { mk, dk } = rateKeys(await ipHash(ip, salt), now);
+  const [m, d] = await Promise.all([kv.get(mk), kv.get(dk)]);
+  await Promise.all([kv.put(mk, String(Number(m ?? 0) + 1), { expirationTtl: 120 }), kv.put(dk, String(Number(d ?? 0) + 1), { expirationTtl: 90000 })]);
 }
 
 export async function bumpGlobal(kv: KVNamespace, now = Date.now()): Promise<boolean> {
