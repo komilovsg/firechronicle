@@ -374,7 +374,7 @@ function renderProof(): void {
   if (head) {
     const big = el('div', 'big');
     for (const [k, val] of [['Bias', head.bias], ['MAE', head.mae], ['R\u00b2', head.r2]]) { const d = el('div'); d.append(el('b', undefined, val), el('span', undefined, k)); big.append(d); }
-    box.append(el('h3', undefined, 'Leave-one-year-out, region by month'), big);
+    box.append(el('h3', undefined, 'Leave-one-year-out, monthly totals'), big);
     const tb = el('table'); const hd = el('tr');
     ['Sensor', 'Bias', 'MAE', 'R\u00b2', 'n'].forEach((t) => hd.append(el('th', undefined, t))); tb.append(hd);
     rows.forEach((r) => { const tr = el('tr'); [r.sensor, r.bias, r.mae, r.r2, r.n].forEach((t) => tr.append(el('td', undefined, t))); tb.append(tr); });

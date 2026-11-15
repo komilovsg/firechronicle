@@ -43,7 +43,7 @@ const SENSORS: [string, string][] = [['snpp', 'S-NPP'], ['n20', 'NOAA-20'], ['n2
 /** Region-month cross-validation per VIIRS sensor, in display strings. */
 export function cvRows(v: unknown): CvRow[] {
   return SENSORS.map(([k, label]) => {
-    const rm = pick(v, 'cv', k, 'region_month');
+    const rm = pick(v, 'cv', k, 'region_month') ?? pick(v, 'cv', k, 'country_month');
     return { sensor: label, years: str(pick(v, 'cv', k, 'years')) ?? DASH, bias: fmtSigned(pick(rm, 'bias_pct'), 2, '%'), mae: fmtNum(pick(rm, 'mae'), 0), r2: fmtNum(pick(rm, 'r2'), 3), n: fmtNum(pick(rm, 'n'), 0) };
   }).filter((r) => r.bias !== DASH || r.mae !== DASH || r.r2 !== DASH);
 }
