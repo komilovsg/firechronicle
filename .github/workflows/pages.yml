@@ -13,7 +13,7 @@ permissions:
 
 concurrency:
   group: pages
-  cancel-in-progress: true
+  cancel-in-progress: false   # never cancel a running daily data refresh
 
 jobs:
   test:
@@ -34,6 +34,26 @@ jobs:
         working-directory: web
       - run: npm test
         working-directory: web
+      - name: Keep the freshest published data (the daily refresh does not commit data)
+        if: github.event_name != 'pull_request'
+        run: |
+          set -u
+          SITE=https://komilovsg.github.io/firechronicle/data
+          tmp=$(mktemp -d)
+          if curl -fsS "$SITE/meta.json" -o "$tmp/meta.json"; then
+            live=$(python -c "import json;print(json.load(open('$tmp/meta.json'))['data_through'])")
+            repo=$(python -c "import json;print(json.load(open('web/public/data/meta.json'))['data_through'])")
+            echo "live=$live repo=$repo"
+            if [[ "$live" > "$repo" ]]; then
+              ok=1
+              for f in meta.json regions.json monthly.json cells.json partial.json recent.json tle.json countries.geojson; do
+                curl -fsS "$SITE/$f" -o "$tmp/$f" || { [ "$f" = partial.json ] || ok=0; }
+              done
+              mkdir -p "$tmp/points"
+              for y in $(seq 2000 $(date -u +%Y)); do curl -fsS "$SITE/points/$y.csv.gz" -o "$tmp/points/$y.csv.gz" || true; done
+              if [ "$ok" = 1 ]; then cp -r "$tmp"/* web/public/data/ && echo "using published data ($live)"; else echo "download incomplete; keeping repo data"; fi
+            fi
+          fi
       - run: npm run build
         working-directory: web
       - uses: actions/upload-pages-artifact@v3
