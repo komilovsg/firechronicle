@@ -63,6 +63,7 @@ function renderTelemetry(): void {
   const offline = typeof navigator !== 'undefined' && navigator.onLine === false;
   const link = offline ? 'off' : state.link, t = active.tel; t.textContent = '';
   const dot = el('span', `mc-dot ${link}`); dot.setAttribute('aria-hidden', 'true');
+  t.title = `SRC NASA FIRMS \u00b7 DATA ${host.dataThrough()}`;
   t.append(dot, el('span', undefined, link === 'ok' ? 'LINK OK' : link === 'err' ? 'LINK ISSUE' : 'OFFLINE'), el('span', 'sep', '·'), el('span', undefined, 'SRC NASA FIRMS'), el('span', 'sep', '·'), el('span', undefined, `DATA ${host.dataThrough()}`), el('span', 'sep', '·'), el('span', undefined, `AREA ${areaCodeNow()}`));
 }
 
@@ -304,7 +305,8 @@ export function toggleAssistant(from?: HTMLElement | null): void {
   if (matchMedia('(max-width: 640px)').matches) {
     closeSheet = openInfoSheet('Ember', root, opener, { tall: true, bare: true });
     const vv = window.visualViewport; // keep the composer above the on-screen keyboard
-    if (vv) { const fit = (): void => { const r = document.querySelector<HTMLElement>('.csel-sheetroot'); if (!r) { vv.removeEventListener('resize', fit); vv.removeEventListener('scroll', fit); return; } r.style.bottom = 'auto'; r.style.height = `${vv.height}px`; r.style.top = `${vv.offsetTop}px`; }; vv.addEventListener('resize', fit); vv.addEventListener('scroll', fit); }
+    if (vv) { const fit = (): void => { const r = document.querySelector<HTMLElement>('.csel-sheetroot'); if (!r) { vv.removeEventListener('resize', fit); vv.removeEventListener('scroll', fit); return; } r.style.bottom = 'auto'; r.style.height = `${vv.height}px`; r.style.top = `${vv.offsetTop}px`; const kb = vv.height < window.innerHeight - 120; r.classList.toggle('kbd', kb); if (kb && active) active.log.scrollTop = active.log.scrollHeight; };
+      vv.addEventListener('resize', () => setTimeout(fit, 0)); vv.addEventListener('resize', fit); vv.addEventListener('scroll', fit); }
   } else {
     scrim = el('div', 'assist-scrim'); scrim.addEventListener('click', closeAssistant); mountPortal(scrim);
     drawer = el('aside', 'assist-drawer'); drawer.setAttribute('role', 'dialog'); drawer.setAttribute('aria-label', 'Ember, the FireChronicle SI assistant');

@@ -1244,3 +1244,18 @@ html[data-side="rail"] .side-row .side-credit, html[data-rail] .side-row .side-c
 .ol-shift .chart, .ol-pace .chart { flex: 1 1 auto; min-height: 240px; }
 @media (max-width: 900px) { .ol-timing, .ol-next3, .ol-pace, .ol-shift, .ol-rel { grid-column: span 12; } }
 .dchip { white-space: normal; line-height: 1.3; text-align: left; }
+
+/* ===== phone sheets: scroll containment, keyboard fit, compact assistant header ===== */
+.csel-backdrop { touch-action: none; } .csel-sheet { overscroll-behavior: contain; }
+.sheet-body, .csel-list, .mc-log { overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+.mc-hello:not([hidden]) ~ .mc-sugs { display: none; }
+@media (max-width: 640px) {
+  .mc-comp textarea, .mc-comp input { font-size: 16px; }
+  .csel-sheetroot.kbd .csel-sheet, .csel-sheetroot.kbd .csel-sheet.info.tall { height: calc(100% - 8px) !important; max-height: none !important; }
+  .csel-sheetroot.kbd .sheet-body .mc { max-height: none; height: 100%; }
+  .mc-head { padding-top: 10px; padding-bottom: 6px; gap: 8px; } .mc-head .ember svg { width: 28px; height: 28px; }
+  .mc-id p { display: none; }
+  .mc-tel { flex-wrap: nowrap; overflow: hidden; white-space: nowrap; padding-block: 4px; }
+  .mc-tab { min-height: 36px; }
+}
+@media (max-width: 399px) { .mc-tel > :nth-child(n+4):nth-child(-n+7) { display: none; } }

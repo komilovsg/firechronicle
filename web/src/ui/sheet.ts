@@ -1,5 +1,6 @@
 import { snapDecision } from './selectLogic';
 import { lockableBody, mountPortal } from './portal';
+import { guardTouch } from './scrollGuard';
 const stack: (() => void)[] = []; // only the top sheet reacts to Esc and Tab
 const reduce = (): boolean => matchMedia('(prefers-reduced-motion: reduce)').matches;
 
@@ -15,7 +16,7 @@ export function openInfoSheet(title: string, body: HTMLElement, returnFocus?: HT
   const x = document.createElement('button'); x.type = 'button'; x.className = 'csel-x'; x.setAttribute('aria-label', 'Close'); x.textContent = '×';
   row.append(t, x); head.append(grab, row);
   const content = document.createElement('div'); content.className = 'sheet-body'; content.append(body);
-  sheet.append(head, content); root.append(backdrop, sheet); mountPortal(root);
+  sheet.append(head, content); root.append(backdrop, sheet); mountPortal(root); guardTouch(root);
   const lock = lockableBody(), scrollY = window.scrollY, b = document.body.style, prev = { p: b.position, t: b.top, w: b.width };
   if (lock) { b.position = 'fixed'; b.top = `-${scrollY}px`; b.width = '100%'; }
   const H = sheet.offsetHeight; let y = H, closed = false;

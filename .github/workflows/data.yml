@@ -4,7 +4,8 @@ name: daily data refresh
 # History is read from the live site (no data commits, the repo stays small); the code is not changed.
 on:
   schedule:
-    - cron: "0 3 * * *"   # 03:00 UTC = 08:00 Dushanbe, after the overnight and afternoon overpasses are in FIRMS
+    - cron: "17 3 * * *"   # 03:17 UTC = 08:17 Dushanbe, after the overnight and afternoon overpasses are in FIRMS
+    - cron: "17 11 * * *"  # backup run: GitHub may delay or skip scheduled runs; a second daily run is harmless
   workflow_dispatch:
 
 permissions:

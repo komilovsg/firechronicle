@@ -1,5 +1,6 @@
 /** Phones: the Map section is the map at full height plus a bottom drawer (peek / half / full) that holds everything else. */
 import { el } from './dom';
+import { guardTouch } from './scrollGuard';
 import type { HudData } from '../fullscreen';
 
 export type Snap = 'peek' | 'half' | 'full';
@@ -31,7 +32,7 @@ export function initMapDrawer(hud: () => HudData | null): void {
   const tools = el('div', 'md-tools');
   const half = el('div', 'md-half'); const full = el('div', 'md-full');
   half.append(card, hint); const legendBox = el('div', 'md-legend'); half.append(legendBox, unusual);
-  full.append(tools); body.append(half, full); dr.append(grab, tl, body);
+  full.append(tools); body.append(half, full); dr.append(grab, tl, body); guardTouch(dr);
   let snap: Snap = 'peek', h = PEEK, placed = false, drag: { y: number; h: number; t: number; v: number; ly: number } | null = null;
   const avail = (): number => col.getBoundingClientRect().height;
   const apply = (hh: number, anim: boolean): void => { h = hh; dr.style.transition = anim ? '' : 'none'; dr.style.height = `${hh}px`; root.style.setProperty('--md-h', `${hh}px`); };

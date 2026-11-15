@@ -1,3 +1,4 @@
+import { guardTouch } from './scrollGuard';
 import { lockableBody, mountPortal } from './portal';
 import { edgeIndex, nextIndex, snapDecision, typeaheadIndex, type Snap } from './selectLogic';
 
@@ -191,7 +192,7 @@ export function enhanceSelect(sel: HTMLSelectElement): void {
     const x = document.createElement('button'); x.type = 'button'; x.className = 'csel-x'; x.setAttribute('aria-label', 'Close'); x.textContent = '×';
     row.append(title, x); head.append(grab, row);
     list.tabIndex = 0;
-    sheet.append(head, list); root.append(backdrop, sheet); mountPortal(root);
+    sheet.append(head, list); root.append(backdrop, sheet); mountPortal(root); guardTouch(root);
 
     // lock body scroll
     const lock = lockableBody(); const scrollY = scrollY_(); const b = document.body.style;
